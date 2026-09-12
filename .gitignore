@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data — regeneratable from scrapers, and too large for git
+data/raw/
+data/processed/
+data/interim/
+data/external/
+!data/README.md
+
+# Model artifacts
+*.lgb
+*.pkl
+*.joblib
+models/*.bin
+models/*.txt
+!models/README.md
+
+# Practice + weather caches (regeneratable)
+*.parquet
+
+# Cached scrape output
+scrape_cache/
+.cache/
+
+# Notebooks (checkpoints)
+.ipynb_checkpoints/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit
+.env
+.env.local
+secrets/
+*credentials*
+*apikey*
+*api_key*
+
+# Logs
+*.log
+logs/
+
+# OS
+desktop.ini

@@ -1,0 +1,37 @@
+driver,team,make,win_prob,win_odds,top5_prob,top10_prob
+Denny Hamlin,Joe Gibbs Racing,Toyota,0.1302,+668,0.568,0.86
+Chase Briscoe,Joe Gibbs Racing,Toyota,0.1208,+727,0.536,0.84
+Christopher Bell,Joe Gibbs Racing,Toyota,0.1008,+893,0.455,0.777
+Ryan Blaney,Team Penske,Ford,0.1003,+897,0.462,0.781
+Joey Logano,Team Penske,Ford,0.0828,+1108,0.401,0.73
+Austin Cindric,Team Penske,Ford,0.0582,+1617,0.305,0.615
+Tyler Reddick,23XI Racing,Toyota,0.0574,+1641,0.292,0.599
+Bubba Wallace,23XI Racing,Toyota,0.041,+2339,0.216,0.468
+Chase Elliott,Hendrick Motorsports,Chevrolet,0.0386,+2491,0.217,0.479
+Ty Gibbs,Joe Gibbs Racing,Toyota,0.0304,+3189,0.171,0.393
+Shane Van Gisbergen,Trackhouse Racing,Chevrolet,0.0294,+3301,0.16,0.367
+Chris Buescher,RFK Racing,Ford,0.0254,+3829,0.15,0.358
+Brad Keselowski,RFK Racing,Ford,0.0189,+5191,0.109,0.264
+Kyle Larson,Hendrick Motorsports,Chevrolet,0.0178,+5502,0.105,0.258
+Ryan Preece,RFK Racing,Ford,0.016,+6131,0.086,0.219
+Daniel Suárez,Spire Motorsports,Chevrolet,0.0157,+6269,0.081,0.204
+Alex Bowman,Hendrick Motorsports,Chevrolet,0.0126,+7868,0.073,0.186
+Ross Chastain,Trackhouse Racing,Chevrolet,0.0098,+10052,0.057,0.148
+Josh Berry,Wood Brothers Racing,Ford,0.0095,+10426,0.055,0.136
+William Byron,Hendrick Motorsports,Chevrolet,0.0091,+10889,0.063,0.16
+Carson Hocevar,Spire Motorsports,Chevrolet,0.0074,+13323,0.044,0.113
+Erik Jones,Legacy Motor Club,Toyota,0.0074,+13323,0.044,0.112
+Riley Herbst,23XI Racing,Toyota,0.0073,+13599,0.042,0.109
+Michael McDowell,Spire Motorsports,Chevrolet,0.0066,+14938,0.037,0.092
+Ricky Stenhouse Jr,HYAK Motorsports,Chevrolet,0.0066,+15167,0.041,0.11
+Austin Dillon,Richard Childress Racing,Chevrolet,0.0058,+16994,0.035,0.094
+Ty Dillon,Kaulig Racing,Chevrolet,0.0048,+20953,0.025,0.064
+Noah Gragson,Front Row Motorsports,Ford,0.0045,+22122,0.026,0.069
+AJ Allmendinger,Kaulig Racing,Chevrolet,0.0044,+22372,0.029,0.081
+Todd Gilliland,Front Row Motorsports,Ford,0.004,+25216,0.024,0.059
+John H. Nemechek,Legacy Motor Club,Toyota,0.0038,+26567,0.024,0.067
+Zane Smith,Front Row Motorsports,Ford,0.0033,+30203,0.018,0.046
+Austin Hill,Richard Childress Racing,Chevrolet,0.0032,+31646,0.017,0.048
+Cole Custer,Haas Factory Team,Chevrolet,0.0024,+41567,0.011,0.031
+Connor Zilisch,Trackhouse Racing,Chevrolet,0.002,+51182,0.014,0.036
+Cody Ware,Rick Ware Racing,Chevrolet,0.0016,+62400,0.009,0.025

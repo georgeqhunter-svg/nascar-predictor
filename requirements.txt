@@ -1,0 +1,10 @@
+requests>=2.31
+cloudscraper>=1.2.71
+beautifulsoup4>=4.12
+lxml>=4.9
+pandas>=2.1
+pyarrow>=14.0
+tenacity>=8.2
+python-dateutil>=2.8
+tqdm>=4.66
+scipy>=1.11
