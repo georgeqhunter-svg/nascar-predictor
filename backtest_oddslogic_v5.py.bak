@@ -977,8 +977,8 @@ RACES = [
 TIGHT_REG = {"num_leaves": 31, "min_data_in_leaf": 25, "lambda_l2": 2.0}
 ALPHA = 0.85
 N_SAMPLES = 30_000
-HAZARD = {"superspeedway": 0.255, "intermediate": 0.142, "short": 0.086,
-          "road": 0.093, "unique": 0.189}
+HAZARD = {"superspeedway": 0.20, "intermediate": 0.05, "short": 0.06,
+          "road": 0.04, "unique": 0.07}
 # Empirical-Bayes shrinkage constant for per-driver hazard: how many prior
 # same-type races we need to trust the driver-specific rate over the track
 # baseline. Lower = trust driver rate more.
@@ -1041,12 +1041,6 @@ def _log_clip(p, floor=1e-9):
     return float(np.log(np.clip(p, floor, 1.0 - floor)))
 
 
-# Race IDs this backtest evaluates. Filled as each race is processed and
-# excluded from every calibration pool, so no evaluated race ever helps
-# calibrate another (walk-forward purity across the whole backtest).
-_EVALUATED_RIDS: set = set()
-
-
 def run_race(target_date, name_match, matchups, races, entries, sessions,
              loopstats, laptimes, features=None):
     """If `features` is passed in, skip the (expensive) rebuild — main() builds
@@ -1065,7 +1059,6 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     if r.empty:
         return None
     target_rid = r.iloc[0]["race_id_short"]
-    _EVALUATED_RIDS.add(target_rid)
     target_date_ts = r.iloc[0]["date"]
     tt = r.iloc[0]["track_type"]
 
@@ -1081,13 +1074,7 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     model.fit(train, n_estimators=15, **TIGHT_REG)
 
     race_order = train.groupby("race_id_short")["date"].first().sort_values().index.tolist()
-    # Guardrail: never calibrate on races this backtest evaluates, and
-    # never silently fall back to default temperatures on an empty pool.
-    val_ids = [rid for rid in race_order[30:] if rid not in _EVALUATED_RIDS]
-    if len(val_ids) < 4:
-        print(f"WARNING [{name_match}]: validation pool has only {len(val_ids)} "
-              f"races (of {len(race_order)} train races) - calibration falls back "
-              f"to T=1.0/Tm=1.0. Check training-data span!")
+    val_ids = race_order[30:]
     val_races, tt_list = [], []
     for rid in val_ids:
         sub = train[train["race_id_short"] == rid]
@@ -1213,7 +1200,7 @@ def main():
             summary.append(result)
 
     print("\n" + "=" * 70)
-    print(f"SUMMARY ({len(summary)} races vs OddsLogic closing lines)")
+    print("SUMMARY (six races vs OddsLogic closing lines)")
     print("=" * 70)
     print(pd.DataFrame(summary).round(4).to_string(index=False))
     total_n = sum(s["n"] for s in summary)

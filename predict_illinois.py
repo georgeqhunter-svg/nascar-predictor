@@ -149,8 +149,12 @@ def main():
     #     leaves top-N systematically overconfident. Empirically ~1.5x brings
     #     the favorite's implied win prob into line with market observed.
     T_effective = T * T_match
-    TOP_N_TEMP_MULT = 1.5
-    T_top_n = T_effective * TOP_N_TEMP_MULT
+    # Widen top-N sampling only when T_effective is "sharp" (< 1.0). If T
+    # already fit at 1.0+ during calibration, no extra widening — the model
+    # is already at natural width and further flattening starves the leaders
+    # of top-10 probability. Cap widening at 1.5x, applied only to the amount
+    # T_effective is BELOW 1.0.
+    T_top_n = max(T_effective * 1.5, 1.0) if T_effective < 1.0 else T_effective
     print(f"T_effective (matchup) = {T_effective:.3f}, T_top_n = {T_top_n:.3f}\n")
 
     rng = np.random.default_rng(42)
@@ -173,7 +177,22 @@ def main():
     # Winner/top-N/manuf use the wider-temperature sample.
     win_prob = (positions_top_n == 1).sum(axis=0) / N_SAMPLES
     top5_prob = (positions_top_n <= 5).sum(axis=0) / N_SAMPLES
-    top10_prob = (positions_top_n <= 10).sum(axis=0) / N_SAMPLES
+    top10_prob_raw = (positions_top_n <= 10).sum(axis=0) / N_SAMPLES
+
+    # Top-10 was the only product miscalibrated on backtest (reliability
+    # diagram showed S-curve stretching). Apply the pre-fit isotonic
+    # calibrator if available.
+    import pickle
+    from pathlib import Path
+    _cal_path = Path("data/processed/top10_calibrator.pkl")
+    if _cal_path.exists():
+        with open(_cal_path, "rb") as _f:
+            _top10_cal = pickle.load(_f)
+        top10_prob = _top10_cal.transform(top10_prob_raw)
+        print(f"Applied top-10 isotonic calibration")
+    else:
+        top10_prob = top10_prob_raw
+        print(f"[warning] No top-10 calibrator at {_cal_path}; using raw probs")
 
     # 4. Winning manufacturer: whose make finished in position 1 each sample.
     make_win_counts = defaultdict(int)
