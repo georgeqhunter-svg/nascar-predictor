@@ -188,6 +188,7 @@ def run_one(target_date, name_match, matchups, races, entries, sessions, loopsta
 
 
 def main():
+    import sys
     races = pd.read_parquet("data/processed/races.parquet")
     entries = pd.read_parquet("data/processed/entries.parquet")
     sessions = pd.read_parquet("data/processed/sessions.parquet")
@@ -196,7 +197,9 @@ def main():
     races["date"] = pd.to_datetime(races["date"])
     entries["date"] = pd.to_datetime(entries["date"])
 
+    filt = sys.argv[1].lower() if len(sys.argv) > 1 else ''
     for date, name, matchups in RACES:
+        if filt and filt not in name.lower(): continue
         run_one(date, name, matchups, races, entries, sessions, loopstats, laptimes)
 
 

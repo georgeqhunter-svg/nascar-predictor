@@ -31,14 +31,13 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
     hist_finish: dict[str, deque] = defaultdict(deque)  # last-20 finish positions
     hist_dnf: dict[str, deque] = defaultdict(deque)     # last-20 DNF flags (0/1)
     season_stats: dict[tuple, dict] = defaultdict(lambda: {"wins": 0, "top5": 0, "top10": 0})
-    type_hist: dict[tuple, deque] = defaultdict(deque)    # last-8 finishes at this track type
-    type_count: dict[tuple, int] = defaultdict(int)       # career races at this track type
-    # Per-driver-per-track history: career count/best + last-5 finishes window.
-    track_stats: dict[tuple, dict] = defaultdict(lambda: {"n": 0, "best": 999})
-    track_hist: dict[tuple, deque] = defaultdict(deque)   # last-5 finishes at this track
-    # Per-TEAM-per-track-type: career count + last-30 team finishes window.
-    team_type_hist: dict[tuple, deque] = defaultdict(deque)
-    team_type_count: dict[tuple, int] = defaultdict(int)
+    type_stats: dict[tuple, dict] = defaultdict(lambda: {"n": 0, "sum_finish": 0})
+    # NEW: per-driver-per-track history (avg finish and count at THIS specific track).
+    track_stats: dict[tuple, dict] = defaultdict(
+        lambda: {"n": 0, "sum_finish": 0, "best": 999}
+    )
+    # NEW: per-TEAM-per-track-type rolling avg finish (all their drivers).
+    team_type_stats: dict[tuple, dict] = defaultdict(lambda: {"n": 0, "sum_finish": 0})
     career_races: dict[str, int] = defaultdict(int)
     last_race_date: dict[str, pd.Timestamp] = {}
 
@@ -72,11 +71,10 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
                 return float(np.mean(arr))
 
             ss = season_stats[(driver, season)]
-            th = type_hist[(driver, track_type)]
+            ts = type_stats[(driver, track_type)]
             trk = track_stats[(driver, track_id)]
-            tkh = track_hist[(driver, track_id)]
             team = team_lookup.get(driver, "")
-            tth = team_type_hist[(team, track_type)]
+            tt_team = team_type_stats[(team, track_type)]
 
             # Momentum: last-3 avg minus previous-3 avg (negative = improving).
             fh_list = list(hist_finish[driver])
@@ -108,13 +106,13 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
                 "season_wins_ytd": ss["wins"],
                 "season_top5_ytd": ss["top5"],
                 "season_top10_ytd": ss["top10"],
-                "races_at_type_ytd": type_count[(driver, track_type)],
-                "avg_finish_at_type_ytd": _avg_last(th, 8),
+                "races_at_type_ytd": ts["n"],
+                "avg_finish_at_type_ytd": (ts["sum_finish"] / ts["n"]) if ts["n"] else np.nan,
                 "races_at_track": trk["n"],
-                "avg_finish_at_track": _avg_last(tkh, 5),
+                "avg_finish_at_track": (trk["sum_finish"] / trk["n"]) if trk["n"] else np.nan,
                 "best_finish_at_track": trk["best"] if trk["n"] else np.nan,
-                "team_avg_finish_at_type": _avg_last(tth, 30),
-                "team_races_at_type": team_type_count[(team, track_type)],
+                "team_avg_finish_at_type": (tt_team["sum_finish"] / tt_team["n"]) if tt_team["n"] else np.nan,
+                "team_races_at_type": tt_team["n"],
                 "momentum_3": momentum_3,
                 "career_races": career_races[driver],
                 "days_since_last_race": days_since,
@@ -141,27 +139,20 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
             if finish <= 10:
                 ss["top10"] += 1
 
-            thu = type_hist[(driver, track_type)]
-            thu.append(finish)
-            if len(thu) > 8:
-                thu.popleft()
-            type_count[(driver, track_type)] += 1
+            ts = type_stats[(driver, track_type)]
+            ts["n"] += 1
+            ts["sum_finish"] += finish
 
             trk = track_stats[(driver, track_id)]
             trk["n"] += 1
+            trk["sum_finish"] += finish
             if finish < trk["best"]:
                 trk["best"] = finish
-            tku = track_hist[(driver, track_id)]
-            tku.append(finish)
-            if len(tku) > 5:
-                tku.popleft()
 
             team = team_lookup.get(driver, "")
-            ttu = team_type_hist[(team, track_type)]
-            ttu.append(finish)
-            if len(ttu) > 30:
-                ttu.popleft()
-            team_type_count[(team, track_type)] += 1
+            tt_team = team_type_stats[(team, track_type)]
+            tt_team["n"] += 1
+            tt_team["sum_finish"] += finish
 
             career_races[driver] += 1
             last_race_date[driver] = race_date
