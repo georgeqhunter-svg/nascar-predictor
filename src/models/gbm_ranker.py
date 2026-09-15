@@ -47,6 +47,7 @@ FEATURES: list[str] = [
     "races_at_track", "avg_finish_at_track", "best_finish_at_track",
     # Team-track-type rolling.
     "team_avg_finish_at_type", "team_races_at_type",
+    "tm_wpct_20", "tm_adj_wpct_20", "tm_races_20",
     # Momentum.
     "momentum_3",
     # Playoff pressure.

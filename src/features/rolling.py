@@ -39,6 +39,9 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
     # Per-TEAM-per-track-type: career count + last-30 team finishes window.
     team_type_hist: dict[tuple, deque] = defaultdict(deque)
     team_type_count: dict[tuple, int] = defaultdict(int)
+    # Teammate battle history: one entry per driver per valid teammate race.
+    tm_wr_hist: dict[str, deque] = defaultdict(deque)
+    tm_adj_hist: dict[str, deque] = defaultdict(deque)
     career_races: dict[str, int] = defaultdict(int)
     last_race_date: dict[str, pd.Timestamp] = {}
 
@@ -77,6 +80,8 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
             tkh = track_hist[(driver, track_id)]
             team = team_lookup.get(driver, "")
             tth = team_type_hist[(team, track_type)]
+            tmh = tm_wr_hist[driver]
+            tmah = tm_adj_hist[driver]
 
             # Momentum: last-3 avg minus previous-3 avg (negative = improving).
             fh_list = list(hist_finish[driver])
@@ -115,10 +120,43 @@ def compute_rolling(entries: pd.DataFrame) -> pd.DataFrame:
                 "best_finish_at_track": trk["best"] if trk["n"] else np.nan,
                 "team_avg_finish_at_type": _avg_last(tth, 30),
                 "team_races_at_type": team_type_count[(team, track_type)],
+                "tm_wpct_20": _avg_last(tmh, 20) if tmh else np.nan,
+                "tm_adj_wpct_20": (0.5 + _avg_last(tmah, 20)) if tmah else np.nan,
+                "tm_races_20": min(len(tmh), 20),
                 "momentum_3": momentum_3,
                 "career_races": career_races[driver],
                 "days_since_last_race": days_since,
             })
+
+        # Teammate battles: update BEFORE hist_finish so expectations use only
+        # pre-race rolling form. Excludes pairs where either driver DNF'd or was
+        # unclassified; multi-car teams contribute that race's fraction beaten.
+        for team_name, tg in g.groupby("team", sort=False):
+            if team_name == "" or len(tg) < 2:
+                continue
+            for _, arow in tg.iterrows():
+                a = arow["driver"]
+                if bool(arow["is_dnf"]) or int(arow["finish_pos"]) <= 0:
+                    continue
+                fa = _avg_last(hist_finish[a], 10)
+                obs_list, exp_list = [], []
+                for _, brow in tg.iterrows():
+                    b = brow["driver"]
+                    if b == a or bool(brow["is_dnf"]) or int(brow["finish_pos"]) <= 0:
+                        continue
+                    fb = _avg_last(hist_finish[b], 10)
+                    obs_list.append(float(int(arow["finish_pos"]) < int(brow["finish_pos"])))
+                    if pd.notna(fa) and pd.notna(fb):
+                        exp_list.append(float(1.0 / (1.0 + np.exp(-(fb - fa) / 6.0))))
+                    else:
+                        exp_list.append(0.5)
+                if obs_list:
+                    tm_wr_hist[a].append(float(np.mean(obs_list)))
+                    tm_adj_hist[a].append(float(np.mean(obs_list) - np.mean(exp_list)))
+                    if len(tm_wr_hist[a]) > 20:
+                        tm_wr_hist[a].popleft()
+                    if len(tm_adj_hist[a]) > 20:
+                        tm_adj_hist[a].popleft()
 
         # NOW update state with this race's outcomes (so downstream races see this data).
         for _, row in g.iterrows():
