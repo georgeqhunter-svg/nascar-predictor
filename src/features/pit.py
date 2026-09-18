@@ -132,3 +132,105 @@ def compute_rolling_pit(laptimes: pd.DataFrame, races: pd.DataFrame) -> pd.DataF
                 hist_time_delta[drv].append(float(row["avg_pit_time_delta"]))
 
     return pd.DataFrame(out_rows)
+
+
+def compute_rolling_pit_team(
+    laptimes: pd.DataFrame,
+    entries: pd.DataFrame,
+    races: pd.DataFrame,
+) -> pd.DataFrame:
+    """Team-level walk-forward rolling pit metrics.
+
+    Motivation: crews shuffle across teammates (mid-season swaps for
+    performance, playoff-window optimization). A pure driver-attributed
+    rolling mean carries stale-crew signal. Team-level aggregation captures
+    the org's current pit capability across all their entries, which for
+    multi-car teams may reflect current crew quality better than a specific
+    driver's 5-race window.
+
+    We emit BOTH the mean and the STD across the team's drivers per race —
+    high std = crews differ within the org (typical of Hendrick/JGR),
+    low std = pretty even (typical of single-car teams).
+
+    Features:
+        team_pit_gain_5, team_pit_gain_10
+        team_pit_gain_std_5, team_pit_gain_std_10
+        team_pit_time_delta_10
+        team_pit_n_stops_10  (sample-size guard)
+    """
+    empty_cols = [
+        "race_id_short", "driver_id",
+        "team_pit_gain_5", "team_pit_gain_10",
+        "team_pit_gain_std_5", "team_pit_gain_std_10",
+        "team_pit_time_delta_10", "team_pit_n_stops_10",
+    ]
+    if laptimes.empty or entries.empty:
+        return pd.DataFrame(columns=empty_cols)
+
+    r = races[["race_id_short", "date"]].copy()
+    r["date"] = pd.to_datetime(r["date"])
+    race_order = r.sort_values("date")["race_id_short"].tolist()
+
+    # (race_id, driver_id) -> team.
+    ent = entries[["race_id_short", "driver_id", "team"]].copy()
+    ent["driver_id"] = pd.to_numeric(ent["driver_id"], errors="coerce")
+    ent = ent.dropna(subset=["driver_id", "team"])
+    ent["driver_id"] = ent["driver_id"].astype(int)
+    driver_team_map: dict[tuple[str, int], str] = {
+        (row.race_id_short, row.driver_id): row.team
+        for row in ent.itertuples(index=False)
+    }
+
+    # Per-team history of (gain, time_delta) samples, one entry per driver-race.
+    hist_gain: dict[str, deque] = defaultdict(lambda: deque(maxlen=40))
+    hist_time_delta: dict[str, deque] = defaultdict(lambda: deque(maxlen=40))
+    hist_n_stops: dict[str, deque] = defaultdict(lambda: deque(maxlen=40))
+
+    out_rows = []
+    for race_id in race_order:
+        lt_race = laptimes[laptimes["race_id_short"] == race_id]
+        drivers_this_race = lt_race["driver_id"].dropna().unique()
+
+        # Emit BEFORE ingesting this race's stops.
+        for drv in drivers_this_race:
+            drv = int(drv)
+            team = driver_team_map.get((race_id, drv))
+            if team is None or team == "":
+                # No team info -> emit NaNs, no team rollup available.
+                out_rows.append({
+                    "race_id_short": race_id, "driver_id": drv,
+                    "team_pit_gain_5": np.nan, "team_pit_gain_10": np.nan,
+                    "team_pit_gain_std_5": np.nan, "team_pit_gain_std_10": np.nan,
+                    "team_pit_time_delta_10": np.nan, "team_pit_n_stops_10": 0,
+                })
+                continue
+            g = list(hist_gain[team])
+            t = list(hist_time_delta[team])
+            n = list(hist_n_stops[team])
+            g5, g10 = g[-5:], g[-10:]
+            t10 = t[-10:]
+            n10 = n[-10:]
+            out_rows.append({
+                "race_id_short": race_id, "driver_id": drv,
+                "team_pit_gain_5": float(np.mean(g5)) if g5 else np.nan,
+                "team_pit_gain_10": float(np.mean(g10)) if g10 else np.nan,
+                "team_pit_gain_std_5": float(np.std(g5)) if len(g5) >= 3 else np.nan,
+                "team_pit_gain_std_10": float(np.std(g10)) if len(g10) >= 3 else np.nan,
+                "team_pit_time_delta_10": float(np.mean(t10)) if t10 else np.nan,
+                "team_pit_n_stops_10": int(sum(n10)) if n10 else 0,
+            })
+
+        # NOW ingest this race for downstream races.
+        stats = per_race_pit_stats(lt_race)
+        for _, row in stats.iterrows():
+            drv = int(row["driver_id"])
+            if row["n_stops"] <= 0:
+                continue
+            team = driver_team_map.get((race_id, drv))
+            if team is None or team == "":
+                continue
+            hist_gain[team].append(float(row["avg_places_gained"]))
+            hist_time_delta[team].append(float(row["avg_pit_time_delta"]))
+            hist_n_stops[team].append(int(row["n_stops"]))
+
+    return pd.DataFrame(out_rows)

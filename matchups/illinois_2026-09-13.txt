@@ -1,0 +1,11 @@
+# FanDuel matchups posted post-qualifying for Enjoy Illinois 300 (2026-09-13).
+# Format: Driver A, Driver B, oddsA, oddsB   (American odds; accents ignored)
+Daniel Suarez,    Michael McDowell, -134,  106
+Joey Logano,      William Byron,    -280,  210
+Josh Berry,       Bubba Wallace,    -108, -118
+Ross Chastain,    Brad Keselowski,  -122, -104
+Ross Chastain,    Chris Buescher,   -120, -110
+Ryan Blaney,      Kyle Larson,      -142,  112
+Carson Hocevar,   Ryan Preece,      -140,  110
+Ty Gibbs,         Tyler Reddick,    -130,  100
+Austin Cindric,   Josh Berry,       -115, -115

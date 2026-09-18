@@ -47,7 +47,6 @@ FEATURES: list[str] = [
     "races_at_track", "avg_finish_at_track", "best_finish_at_track",
     # Team-track-type rolling.
     "team_avg_finish_at_type", "team_races_at_type",
-    "tm_wpct_20", "tm_adj_wpct_20", "tm_races_20",
     # Momentum.
     "momentum_3",
     # Playoff pressure.
@@ -63,11 +62,6 @@ FEATURES: list[str] = [
     "restart_gain_5", "restart_gain_10", "restart_count_10",
     # Pit-crew performance (rolling, inferred from lap-time patterns).
     "pit_gain_5", "pit_gain_10", "pit_gain_std_10", "pit_time_delta_10",
-    # Team-level pit performance — captures crew shuffles + playoff crew
-    # assignment better than a specific driver's rolling window would.
-    "team_pit_gain_5", "team_pit_gain_10",
-    "team_pit_gain_std_5", "team_pit_gain_std_10",
-    "team_pit_time_delta_10", "team_pit_n_stops_10",
     "restart_gain_std_10",
     # Driver-specific outcome distribution shape (at track type).
     "dnf_rate_at_type_10", "finish_std_at_type_10", "finish_iqr_at_type_10",
@@ -99,59 +93,13 @@ FEATURES: list[str] = [
 CATEGORICAL: list[str] = ["track_type", "driver", "team", "manufacturer"]
 
 
-# Frozen category universe: pandas `.astype("category")` infers categories per
-# call, so train and predict end up with different code mappings whenever the
-# value sets differ. LightGBM stores splits by code — a driver with code 5 at
-# train and code 3 at predict will be routed to the WRONG leaf. Impact is
-# most severe for thin-data drivers (back-of-field), whose predictions can
-# swing by ~1 std-dev of score. Fix: freeze the category set once, at process
-# start, from the union of everything ever seen in entries.parquet, so codes
-# are consistent forever.
-_FROZEN_CATEGORIES: dict[str, pd.Index] | None = None
-
-
-def _load_frozen_categories() -> dict[str, pd.Index]:
-    """Union of driver / team / manufacturer / track_type across ALL data.
-    Cached after first call. Identity is not leakage — we're saying 'this
-    string exists,' not 'this driver's performance is X.'"""
-    global _FROZEN_CATEGORIES
-    if _FROZEN_CATEGORIES is not None:
-        return _FROZEN_CATEGORIES
-    from pathlib import Path
-    proc = Path("data/processed")
-    entries = pd.read_parquet(proc / "entries.parquet")
-    races = pd.read_parquet(proc / "races.parquet")
-    _FROZEN_CATEGORIES = {
-        "driver": pd.Index(sorted(entries["driver"].dropna().astype(str).unique())),
-        "team": pd.Index(sorted(entries["team"].dropna().astype(str).unique())),
-        "manufacturer": pd.Index(
-            sorted(entries["make"].dropna().astype(str).unique())
-            if "make" in entries.columns else []
-        ),
-        "track_type": pd.Index(sorted(races["track_type"].dropna().astype(str).unique())),
-    }
-    return _FROZEN_CATEGORIES
-
-
 def _prepare_x(df: pd.DataFrame, drop: list[str] | None = None) -> pd.DataFrame:
     drop = drop or []
     feats = [f for f in FEATURES if f not in drop]
     cats = [c for c in CATEGORICAL if c not in drop]
     x = df[feats + cats].copy()
-    frozen = _load_frozen_categories()
     for c in cats:
-        # Use the frozen category list so codes are identical across every
-        # fit() and predict_scores() call. Values in x[c] that aren't in the
-        # frozen list become NaN, which LightGBM handles as missing (routed
-        # to the default direction of each split). That's safer than random
-        # re-encoding, and there shouldn't be any unless entries.parquet has
-        # been updated between load and predict — in which case the caller
-        # should restart the process.
-        universe = frozen.get(c)
-        if universe is None:
-            x[c] = x[c].astype("category")
-        else:
-            x[c] = pd.Categorical(x[c].astype(str), categories=universe.tolist())
+        x[c] = x[c].astype("category")
     if "restrictor_plate" in x.columns:
         x["restrictor_plate"] = x["restrictor_plate"].astype(int)
     return x

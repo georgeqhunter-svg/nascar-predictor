@@ -2,7 +2,7 @@
 
 Reads data/processed/backtest_top10.parquet (from reliability_top_n.py).
 1. Leave-one-race-out fits + evaluation to verify improvement.
-2. Fits final isotonic on ALL data, saves pickle for predict_illinois.py.
+2. Fits final isotonic on ALL data, saves pickle for predict_next.py.
 
 Only top-10 needs this — the reliability diagram showed winner, top-5,
 and top-of-make are already well-calibrated.

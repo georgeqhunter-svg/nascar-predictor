@@ -60,8 +60,13 @@ def find_best_temperature(
     T_grid: np.ndarray | None = None,
     n_samples: int = 2000,
     seed: int = 0,
+    dispersion_per_race: list[float] | None = None,
 ) -> tuple[float, pd.DataFrame]:
     """Grid-search T minimizing mean matchup log-loss over val races.
+
+    If dispersion_per_race is provided (aligned with val_races), val sampling
+    uses correlated-DNF frailty consistent with what production sampling will
+    use. Otherwise defaults to independent hazards.
 
     Returns (best_T, per-T loss table).
     """
@@ -73,9 +78,14 @@ def find_best_temperature(
     for T in T_grid:
         losses = []
         winner_losses = []
-        for r in val_races:
+        for ridx, r in enumerate(val_races):
             strengths = r.scores / T
-            positions = dist.sample_finishing_orders(strengths, r.hazards, n_samples=n_samples, rng=rng)
+            disp = (dispersion_per_race[ridx]
+                    if dispersion_per_race is not None else 0.0)
+            positions = dist.sample_finishing_orders(
+                strengths, r.hazards, n_samples=n_samples, rng=rng,
+                dnf_dispersion=disp,
+            )
             M = dist.matchup_probs(positions)
             winp = dist.win_probs(positions)
             losses.append(_matchup_ll_for_race(M, r.finishes, r.is_dnf))
@@ -95,9 +105,13 @@ def find_best_temperature_by_type(
     n_samples: int = 1500,
     default_T: float = 3.0,
     seed: int = 0,
+    dnf_dispersion_by_type: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Search T separately per track_type. Falls back to a global search if a
     type has too few val races.
+
+    dnf_dispersion_by_type is passed through so val sampling uses the same
+    correlated-DNF frailty that production sampling will use.
     """
     if len(val_races) != len(track_types):
         raise ValueError("length mismatch between val_races and track_types")
@@ -110,7 +124,15 @@ def find_best_temperature_by_type(
         if len(sub) < 4:
             result[tt] = default_T
             continue
-        best_T, _ = find_best_temperature(sub, T_grid=T_grid, n_samples=n_samples, seed=seed)
+        disp = 0.0
+        if dnf_dispersion_by_type is not None:
+            disp = dnf_dispersion_by_type.get(tt, 0.0)
+        # All races in `sub` share the same track type, so a single dispersion.
+        disp_per_race = [disp] * len(sub) if disp > 0 else None
+        best_T, _ = find_best_temperature(
+            sub, T_grid=T_grid, n_samples=n_samples, seed=seed,
+            dispersion_per_race=disp_per_race,
+        )
         result[tt] = best_T
     return result
 

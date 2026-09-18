@@ -1,7 +1,7 @@
 """Top-N / winner / manufacturer reliability diagram on the backtest.
 
 For each race in RACES, trains the walk-forward model, samples the field
-at T_top_n (same setup as predict_illinois.py), and records for every
+at T_top_n (same setup as predict_next.py), and records for every
 driver:
   - predicted winner prob vs actual (did they finish P1?)
   - predicted top-5 prob   vs actual (did they finish P<=5?)

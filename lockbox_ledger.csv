@@ -1,2 +1,0 @@
-graded_at,race_id,race_name,date,season,track_type,T,T_match,n,model_ll,mkt_ll,delta,brier_model,brier_mkt,model_correct,mkt_correct,ev_won,ev_n,ev_profit,bets_n,bets_won,bets_profit,matchups_file
-2026-09-15T11:56:45,2026-5625,Enjoy Illinois 300,2026-09-13,2026,intermediate,0.4,1.4571492159934873,9,0.8704423051675377,0.6529103263984255,0.21753197876911223,0.3252617513580247,0.2307269630085637,4,6,4,9,-2.21154858406148,0,0,0.0,matchups_illinois.txt

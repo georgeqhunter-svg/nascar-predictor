@@ -33,7 +33,7 @@ from .practice_pace import compute_practice_features
 from .race_pace import compute_race_pace
 from .track_rolling import compute_track_rolling
 from .type_rolling import compute_type_rolling
-from .pit import compute_rolling_pit
+from .pit import compute_rolling_pit, compute_rolling_pit_team
 from .restart import compute_rolling_restart
 from .tire_deg import compute_rolling_tire
 from .rolling import compute_rolling
@@ -142,12 +142,16 @@ def build_features(
         pit_rolling = compute_rolling_pit(laptimes, races).set_index(
             ["race_id_short", "driver_id"]
         )
+        pit_team_rolling = compute_rolling_pit_team(laptimes, entries, races).set_index(
+            ["race_id_short", "driver_id"]
+        )
         tire_rolling = compute_rolling_tire(laptimes, races).set_index(
             ["race_id_short", "driver_id"]
         )
     else:
         restart_rolling = None
         pit_rolling = None
+        pit_team_rolling = None
         tire_rolling = None
 
     playoff_drivers = derive_playoff_drivers(entries, races)
@@ -261,6 +265,19 @@ def build_features(
                 "pit_gain_std_10": pit_row["pit_gain_std_10"] if pit_row is not None else np.nan,
                 "pit_time_delta_10": pit_row["pit_time_delta_10"] if pit_row is not None else np.nan,
             }
+            pit_team_row = None
+            if pit_team_rolling is not None and drv_id is not None and pd.notna(drv_id):
+                key = (race_id, int(drv_id))
+                if key in pit_team_rolling.index:
+                    pit_team_row = pit_team_rolling.loc[key]
+            pit_features.update({
+                "team_pit_gain_5": pit_team_row["team_pit_gain_5"] if pit_team_row is not None else np.nan,
+                "team_pit_gain_10": pit_team_row["team_pit_gain_10"] if pit_team_row is not None else np.nan,
+                "team_pit_gain_std_5": pit_team_row["team_pit_gain_std_5"] if pit_team_row is not None else np.nan,
+                "team_pit_gain_std_10": pit_team_row["team_pit_gain_std_10"] if pit_team_row is not None else np.nan,
+                "team_pit_time_delta_10": pit_team_row["team_pit_time_delta_10"] if pit_team_row is not None else np.nan,
+                "team_pit_n_stops_10": pit_team_row["team_pit_n_stops_10"] if pit_team_row is not None else 0,
+            })
             tire_row = None
             if tire_rolling is not None and drv_id is not None and pd.notna(drv_id):
                 key = (race_id, int(drv_id))
@@ -396,10 +413,24 @@ def build_features(
         # After row emission, update PL ratings using this race's outcome so
         # future rows see the new snapshot. Skip if the race hasn't been run
         # yet (finish_pos == 0 for everyone).
+        #
+        # Defense in depth: filter to finish_pos > 0 entries before building
+        # the RaceRanking. If a driver has finish_pos <= 0 in an otherwise-run
+        # race (scratched, partial data), sort_values("finish_pos") puts them
+        # BEFORE the real winner (0 < 1), and PL would treat them as the race
+        # winner, poisoning ratings for every subsequent race. See
+        # diag_finish_pos_zero.py for the audit that confirmed the current
+        # entries.parquet is clean; this guard prevents future regressions.
         if any(f > 0 for f in finishes):
-            first_dnf = next((idx for idx, v in enumerate(is_dnf_arr) if v), len(drivers))
+            keep = [i for i, f in enumerate(finishes) if f > 0]
+            pl_drivers = [drivers[i] for i in keep]
+            pl_teams = [teams[i] for i in keep]
+            pl_is_dnf = [is_dnf_arr[i] for i in keep]
+            first_dnf = next(
+                (idx for idx, v in enumerate(pl_is_dnf) if v), len(pl_drivers)
+            )
             race = RaceRanking(
-                drivers=drivers, teams=teams, track_type=tt, dnf_at=first_dnf,
+                drivers=pl_drivers, teams=pl_teams, track_type=tt, dnf_at=first_dnf,
             )
             update_from_race(ratings, race)
 

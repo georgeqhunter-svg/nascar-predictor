@@ -1,4 +1,4 @@
-"""score_race.py - LOCKBOX scorer for any race, with a running ledger.
+"""score_race.py - LOCKBOX v2 scorer for any race, with a running ledger.
 
 Usage:
     python score_race.py "Illinois" 2026-09-13 matchups_illinois.txt
@@ -21,10 +21,15 @@ Re-running the same race_id replaces its ledger rows (idempotent re-grade).
 Both ledgers print running pooled stats after every race, including a 95% CI
 on the per-matchup log-loss delta vs the market.
 
-Pipeline mirrors the committed backtest_oddslogic_v5.py exactly (same
-TIGHT_REG, ALPHA, HAZARD, per-type T, matchup Tm, N_SAMPLES=30000, seed 42).
-Matchups where either driver has finish_pos <= 0 (unclassified/DNF) are not
-graded; they are reported separately.
+LOCKBOX v2 CHANGES vs v1:
+    - Uses src.models.predict_pipeline.calibrate_and_sample, which does
+      leave-one-race-out CV to fit T (val races are scored by ensembles
+      refit WITHOUT them — no leakage).
+    - Killed T_match: single calibrated T handles both matchup and top-N.
+      T_match in v1 was fit against the same val races T was fit on, so it
+      was optimizing against a bias that shouldn't have existed.
+    - Per-driver hazards on both val and target races.
+    - Matches backtest_oddslogic_v5.py's honest walk-forward setup exactly.
 """
 from __future__ import annotations
 
@@ -37,8 +42,13 @@ import numpy as np
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, american_to_prob, per_driver_hazards,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION,
+    american_to_prob, per_driver_hazards,
 )
+from src.models.predict_pipeline import calibrate_and_sample
+
+
+LOCKBOX_VERSION = "v2"  # honest leave-one-race-out CV, no T_match
 
 
 def _norm(s: str) -> str:
@@ -75,7 +85,7 @@ def parse_matchups(path: str) -> list[tuple[str, str, int, int]]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Lockbox-scorer: grade the committed model vs the market.")
+    ap = argparse.ArgumentParser(description="Lockbox v2: grade the committed (honest-calibration) model vs the market.")
     ap.add_argument("name", help="race name fragment, e.g. 'Illinois'")
     ap.add_argument("date", help="race date YYYY-MM-DD")
     ap.add_argument("matchups", help="path to matchups file")
@@ -89,10 +99,6 @@ def main() -> None:
     print(f"Loaded {len(matchups)} matchups from {args.matchups}")
 
     from src.features.build_features import build_features
-    from src.models import distribution as dist
-    from src.models.calibrate import RaceScoresGT, find_best_temperature_by_type
-    from src.models.gbm_ranker import GBMEnsemble
-    from src.models.matchup_calibrate import fit_matchup_temperature
 
     races = pd.read_parquet("data/processed/races.parquet")
     entries = pd.read_parquet("data/processed/entries.parquet")
@@ -125,73 +131,15 @@ def main() -> None:
     train = features[(features["date"] < target_date_ts) & (features["finish_pos"] > 0)]
     target = features[features["race_id_short"] == rid].reset_index(drop=True)
 
-    print("Training model...")
-    model = GBMEnsemble()
-    model.fit(train, n_estimators=15, **TIGHT_REG)
-
-    race_ids = train.groupby("race_id_short")["date"].first().sort_values().index.tolist()
-    val_ids = race_ids[30:]
-    val_races, tt_list = [], []
-    for vid in val_ids:
-        sub = train[train["race_id_short"] == vid]
-        raw = model.predict_scores(sub)
-        gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-        pl_z = ((sub["pl_effective"].to_numpy() - sub["pl_effective"].mean())
-                / (sub["pl_effective"].std() + 1e-9))
-        b = ALPHA * gbm_z + (1 - ALPHA) * pl_z
-        b = b / max(b.std(), 1e-6)
-        val_races.append(RaceScoresGT(
-            scores=b, finishes=sub["finish_pos"].to_numpy(),
-            is_dnf=sub["is_dnf"].to_numpy(),
-            hazards=np.full(len(sub), HAZARD.get(sub["track_type"].iloc[0], 0.08)),
-        ))
-        tt_list.append(sub["track_type"].iloc[0])
-    T_by_type = find_best_temperature_by_type(val_races, tt_list, default_T=1.0, n_samples=1500)
-    T = T_by_type.get(tt, 1.0)
-
-    raw = model.predict_scores(target)
-    gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-    pl_z = ((target["pl_effective"].to_numpy() - target["pl_effective"].mean())
-            / (target["pl_effective"].std() + 1e-9))
-    blended = ALPHA * gbm_z + (1 - ALPHA) * pl_z
-    blended = blended / max(blended.std(), 1e-6)
-    haz = per_driver_hazards(target, tt)
-
-    cal_probs_by_type, cal_out_by_type = {}, {}
-    for vr, v_tt in zip(val_races, tt_list):
-        haz_v = np.full(len(vr.scores), 0.08)
-        rng_v = np.random.default_rng(0)
-        pos_v = dist.sample_finishing_orders(
-            vr.scores / max(T, 0.1), haz_v, n_samples=5000, rng=rng_v
-        )
-        m_v = dist.matchup_probs(pos_v)
-        f = vr.finishes
-        n_v = len(f)
-        cal_probs_by_type.setdefault(v_tt, [])
-        cal_out_by_type.setdefault(v_tt, [])
-        for ii in range(n_v):
-            for jj in range(ii + 1, n_v):
-                if f[ii] <= 0 or f[jj] <= 0:
-                    continue
-                if f[ii] == f[jj]:
-                    continue
-                cal_probs_by_type[v_tt].append(float(m_v[ii, jj]))
-                cal_out_by_type[v_tt].append(int(f[ii] < f[jj]))
-    all_p = [p for lst in cal_probs_by_type.values() for p in lst]
-    all_o = [o for lst in cal_out_by_type.values() for o in lst]
-    T_match_global = fit_matchup_temperature(np.asarray(all_p), np.asarray(all_o)) if all_p else 1.0
-    if cal_probs_by_type.get(tt) and len(cal_probs_by_type[tt]) >= 200:
-        T_match = fit_matchup_temperature(
-            np.asarray(cal_probs_by_type[tt]), np.asarray(cal_out_by_type[tt]))
-    else:
-        T_match = T_match_global
-
-    T_effective = T * T_match
-    rng = np.random.default_rng(42)
-    positions = dist.sample_finishing_orders(
-        blended / T_effective, haz, n_samples=N_SAMPLES, rng=rng
+    print("Calibrating + sampling (leave-one-race-out CV - this is the slow part)...")
+    sr = calibrate_and_sample(
+        train, target, tt,
+        tight_reg=TIGHT_REG, alpha=ALPHA, n_samples=N_SAMPLES,
+        hazard_lookup=HAZARD,
+        per_driver_hazards_fn=per_driver_hazards,
+        dnf_dispersion_by_type=DNF_DISPERSION,
     )
-    matchup_mtx = dist.matchup_probs(positions)
+    matchup_mtx = sr.matchup_mtx
 
     name_to_idx = {_norm(d): i for i, d in enumerate(target["driver"].values)}
     actual = entries[entries["race_id_short"] == rid][["driver", "finish_pos"]].copy()
@@ -242,7 +190,8 @@ def main() -> None:
     df = pd.DataFrame(rows)
     print()
     print("=" * 100)
-    print(f"LOCKBOX: {race_name} ({rid}, {tt})  T={T}  Tm={T_match:.2f}  n={len(df)} matchups")
+    print(f"LOCKBOX {LOCKBOX_VERSION}: {race_name} ({rid}, {tt})  T={sr.T:.3f}  "
+          f"n={len(df)} matchups")
     print("=" * 100)
     if len(df) == 0:
         print("No matchups could be graded - ledger NOT updated.")
@@ -282,9 +231,10 @@ def main() -> None:
     # --- ledgers -----------------------------------------------------------
     race_row = {
         "graded_at": datetime.now().isoformat(timespec="seconds"),
+        "lockbox_version": LOCKBOX_VERSION,
         "race_id": str(rid), "race_name": race_name,
         "date": str(pd.Timestamp(target_date_ts).date()), "season": args.season,
-        "track_type": tt, "T": T, "T_match": T_match,
+        "track_type": tt, "T": sr.T,
         "n": len(df),
         "model_ll": df["model_ll"].mean(), "mkt_ll": df["mkt_ll"].mean(),
         "delta": df["model_ll"].mean() - df["mkt_ll"].mean(),
@@ -310,6 +260,7 @@ def main() -> None:
     det = df.copy()
     det.insert(0, "date", str(pd.Timestamp(target_date_ts).date()))
     det.insert(0, "race_id", str(rid))
+    det.insert(0, "lockbox_version", LOCKBOX_VERSION)
     detail_path = Path(args.detail)
     if detail_path.exists():
         old = pd.read_csv(detail_path, dtype={"race_id": str})

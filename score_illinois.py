@@ -1,40 +1,51 @@
-"""EV analysis for BetUS Enjoy Illinois 300 matchups.
+"""score_illinois.py - LOCKBOX: Enjoy Illinois 300 (2026-09-13), graded.
 
-Runs the model to get matchup probabilities, then computes edge over BetUS
-prices for each of the ~40 posted matchups. Reports bets ranked by expected
-value in units per dollar staked.
+Scores the committed model on the 9 posted matchups, graded against actual
+finishes. Reports per-matchup and aggregate log-loss / Brier vs the vig-free
+market, and settles the model's EV picks at flat $1 stakes (plus the
+>=30%-edge "official bet" subset separately).
+
+Pipeline mirrors the committed backtest_oddslogic_v5.py exactly (same TIGHT_REG,
+ALPHA, HAZARD, per-type T, matchup Tm, N_SAMPLES=30000, seed 42).
 """
 from __future__ import annotations
+
+import unicodedata
 
 import numpy as np
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, american_to_prob,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, american_to_prob, per_driver_hazards,
 )
 
-
-TARGET_NAME = "Enjoy Illinois"
+TARGET_NAME = "Illinois"
 TARGET_DATE = "2026-09-13"
 
-
-# FanDuel matchups (posted post-qualifying): (driver_a, driver_b, odds_a, odds_b)
+# FanDuel matchups posted post-qualifying: (driver_a, driver_b, odds_a, odds_b)
 MATCHUPS = [
-    ("Daniel Suárez",  "Michael McDowell",  -134,  106),
+    ("Daniel Suarez",  "Michael McDowell",  -134,  106),
     ("Joey Logano",    "William Byron",     -280,  210),
     ("Josh Berry",     "Bubba Wallace",     -108, -118),
     ("Ross Chastain",  "Brad Keselowski",   -122, -104),
     ("Ryan Blaney",    "Kyle Larson",       -142,  112),
     ("Carson Hocevar", "Ryan Preece",       -140,  110),
-    # New batch (2:05 PM postings)
     ("Ty Gibbs",       "Tyler Reddick",     -130,  100),
     ("Ross Chastain",  "Chris Buescher",    -120, -110),
     ("Austin Cindric", "Josh Berry",        -115, -115),
 ]
 
 
+def _norm(s: str) -> str:
+    return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().strip().lower()
+
+
 def american_to_decimal(odds: int) -> float:
     return (odds / 100 + 1) if odds > 0 else (100 / abs(odds) + 1)
+
+
+def _log_clip(p: float, floor: float = 1e-9) -> float:
+    return float(np.log(min(max(p, floor), 1.0 - floor)))
 
 
 def main():
@@ -52,7 +63,7 @@ def main():
     races["date"] = pd.to_datetime(races["date"])
     entries["date"] = pd.to_datetime(entries["date"])
 
-    print("Building features...")
+    print("Building features (slow part)...")
     features = build_features(races, entries, sessions, loopstats=loopstats, laptimes=laptimes)
     features["date"] = pd.to_datetime(features["date"])
 
@@ -65,6 +76,7 @@ def main():
     rid = r.iloc[0]["race_id_short"]
     target_date_ts = r.iloc[0]["date"]
     tt = r.iloc[0]["track_type"]
+    print(f"Target: {r.iloc[0].get('race_name', TARGET_NAME)} ({rid}, {tt})")
 
     train = features[(features["date"] < target_date_ts) & (features["finish_pos"] > 0)]
     target = features[features["race_id_short"] == rid].reset_index(drop=True)
@@ -99,10 +111,8 @@ def main():
             / (target["pl_effective"].std() + 1e-9))
     blended = ALPHA * gbm_z + (1 - ALPHA) * pl_z
     blended = blended / max(blended.std(), 1e-6)
-    from backtest_oddslogic_v5 import per_driver_hazards
     haz = per_driver_hazards(target, tt)
 
-    # Per-track-type matchup temperature.
     cal_probs_by_type, cal_out_by_type = {}, {}
     for vr, v_tt in zip(val_races, tt_list):
         haz_v = np.full(len(vr.scores), 0.08)
@@ -117,8 +127,10 @@ def main():
         cal_out_by_type.setdefault(v_tt, [])
         for ii in range(n_v):
             for jj in range(ii + 1, n_v):
-                if f[ii] <= 0 or f[jj] <= 0: continue
-                if f[ii] == f[jj]: continue
+                if f[ii] <= 0 or f[jj] <= 0:
+                    continue
+                if f[ii] == f[jj]:
+                    continue
                 cal_probs_by_type[v_tt].append(float(m_v[ii, jj]))
                 cal_out_by_type[v_tt].append(int(f[ii] < f[jj]))
     all_p = [p for lst in cal_probs_by_type.values() for p in lst]
@@ -126,109 +138,85 @@ def main():
     T_match_global = fit_matchup_temperature(np.asarray(all_p), np.asarray(all_o)) if all_p else 1.0
     if cal_probs_by_type.get(tt) and len(cal_probs_by_type[tt]) >= 200:
         T_match = fit_matchup_temperature(
-            np.asarray(cal_probs_by_type[tt]),
-            np.asarray(cal_out_by_type[tt]),
-        )
+            np.asarray(cal_probs_by_type[tt]), np.asarray(cal_out_by_type[tt]))
     else:
         T_match = T_match_global
 
     T_effective = T * T_match
-    print(f"T={T}, T_m={T_match:.2f}, T_effective={T_effective:.3f}\n")
-
-    # Sample once at unified temperature.
     rng = np.random.default_rng(42)
     positions = dist.sample_finishing_orders(
         blended / T_effective, haz, n_samples=N_SAMPLES, rng=rng
     )
     matchup_mtx = dist.matchup_probs(positions)
 
-    driver_to_idx = {d: i for i, d in enumerate(target["driver"].values)}
+    name_to_idx = {_norm(d): i for i, d in enumerate(target["driver"].values)}
+    actual = entries[entries["race_id_short"] == rid][["driver", "finish_pos"]].copy()
+    actual["nkey"] = actual["driver"].map(_norm)
+    finish = dict(zip(actual["nkey"], actual["finish_pos"]))
 
-    rows = []
-    unresolved = []
+    rows, unresolved = [], []
     for a, b, oa, ob in MATCHUPS:
-        if a not in driver_to_idx or b not in driver_to_idx:
+        ka, kb = _norm(a), _norm(b)
+        if ka not in name_to_idx or kb not in name_to_idx:
             unresolved.append((a, b))
             continue
-        i, j = driver_to_idx[a], driver_to_idx[b]
+        i, j = name_to_idx[ka], name_to_idx[kb]
         p_a = float(matchup_mtx[i, j])
-        p_b = 1 - p_a
-
-        ma_raw = american_to_prob(oa); mb_raw = american_to_prob(ob)
+        ma_raw, mb_raw = american_to_prob(oa), american_to_prob(ob)
         vig = ma_raw + mb_raw
-        ma, mb = ma_raw / vig, mb_raw / vig  # vig-free market implied
-
-        # EV per $1 stake on each side
-        b_dec_a = american_to_decimal(oa) - 1  # profit-per-$1 if wins
-        b_dec_b = american_to_decimal(ob) - 1
-        ev_a = p_a * b_dec_a - (1 - p_a)
-        ev_b = p_b * b_dec_b - (1 - p_b)
-
-        pick, pick_p, pick_odds, pick_ev, pick_market = ("A", p_a, oa, ev_a, ma) if ev_a > ev_b else ("B", p_b, ob, ev_b, mb)
-        pick_driver = a if pick == "A" else b
-        other_driver = b if pick == "A" else a
-        edge = pick_p - pick_market
-
+        ma = ma_raw / vig
+        fa, fb = finish.get(ka), finish.get(kb)
+        if fa is None or fb is None:
+            unresolved.append((a, b))
+            continue
+        a_won = fa < fb
+        p_model_won = p_a if a_won else 1 - p_a
+        p_market_won = ma if a_won else 1 - ma
+        # EV pick: side with higher expected value per $1
+        ev_a = p_a * (american_to_decimal(oa) - 1) - (1 - p_a)
+        ev_b = (1 - p_a) * (american_to_decimal(ob) - 1) - p_a
+        if ev_a >= ev_b:
+            pick, pick_odds, pick_won, pick_ev, edge = a, oa, a_won, ev_a, p_a - ma
+        else:
+            pick, pick_odds, pick_won, pick_ev, edge = b, ob, not a_won, ev_b, (1 - p_a) - (1 - ma)
+        profit = (american_to_decimal(pick_odds) - 1) if pick_won else -1.0
         rows.append({
-            "pick": pick_driver,
-            "against": other_driver,
-            "odds": pick_odds,
-            "model_p": pick_p,
-            "market_p_vigfree": pick_market,
-            "edge": edge,
-            "ev_per_dollar": pick_ev,
+            "a": a, "b": b, "model_p_a": p_a, "mkt_p_a": ma,
+            "winner": a if a_won else b,
+            "model_ll": -_log_clip(p_model_won), "mkt_ll": -_log_clip(p_market_won),
+            "model_brier": (p_a - float(a_won)) ** 2, "mkt_brier": (ma - float(a_won)) ** 2,
+            "model_right": int((p_a > 0.5) == a_won), "mkt_right": int((ma > 0.5) == a_won),
+            "pick": pick, "pick_ev": pick_ev, "edge": edge,
+            "pick_won": int(pick_won), "profit": profit,
         })
 
-    df = pd.DataFrame(rows).sort_values("ev_per_dollar", ascending=False)
-
-    print(f"{'=' * 90}")
-    print("BEST-EV MATCHUPS (BetUS Enjoy Illinois 300)")
-    print(f"{'=' * 90}")
-    print(df.to_string(
-        index=False,
-        formatters={
-            "model_p": "{:.1%}".format,
-            "market_p_vigfree": "{:.1%}".format,
-            "edge": "{:+.1%}".format,
-            "ev_per_dollar": "{:+.4f}".format,
-        },
-    ))
-
-    print(f"\n{'=' * 90}")
-    print("BETS TO TAKE (edge >= 30% — backtest-validated threshold)")
-    print(f"{'=' * 90}")
-    plus = df[df["edge"] >= 0.30]
-    if len(plus) > 0:
-        print(plus.to_string(
-            index=False,
-            formatters={
-                "model_p": "{:.1%}".format,
-                "market_p_vigfree": "{:.1%}".format,
-                "edge": "{:+.1%}".format,
-                "ev_per_dollar": "{:+.4f}".format,
-            },
-        ))
-        print(f"\n{len(plus)} bets with >=30% edge, mean EV = ${plus['ev_per_dollar'].mean():.4f}/$")
+    df = pd.DataFrame(rows)
+    print()
+    print("=" * 100)
+    print(f"LOCKBOX: {TARGET_NAME} ({rid}, {tt})  T={T}  Tm={T_match:.2f}  n={len(df)} matchups")
+    print("=" * 100)
+    show = df[["a", "b", "model_p_a", "mkt_p_a", "winner", "model_ll", "mkt_ll"]].copy()
+    print(show.to_string(index=False, formatters={
+        "model_p_a": "{:.3f}".format, "mkt_p_a": "{:.3f}".format,
+        "model_ll": "{:.3f}".format, "mkt_ll": "{:.3f}".format}))
+    print()
+    print(f"log-loss : model {df["model_ll"].mean():.4f}  market {df["mkt_ll"].mean():.4f}  "
+          f"Delta {df["model_ll"].mean() - df["mkt_ll"].mean():+.4f}")
+    print(f"Brier    : model {df["model_brier"].mean():.4f}  market {df["mkt_brier"].mean():.4f}")
+    print(f"correct  : model {df["model_right"].sum()}/{len(df)}  market {df["mkt_right"].sum()}/{len(df)}")
+    print()
+    print("EV picks (higher-EV side of every matchup, flat $1):")
+    print(f"  {df["pick_won"].sum()}/{len(df)} won, {df["profit"].sum():+.2f} units")
+    bets = df[df["edge"] >= 0.30]
+    if len(bets):
+        print("Official bets (edge >= 30%):")
+        print(bets[["pick", "pick_ev", "edge", "pick_won", "profit"]].to_string(
+            index=False, formatters={"pick_ev": "{:+.3f}".format, "edge": "{:+.1%}".format}))
+        print(f"  {bets["pick_won"].sum()}/{len(bets)} won, {bets["profit"].sum():+.2f} units")
     else:
-        print("No matchups clear the 30% edge threshold — skip the market.")
-
-    print(f"\n{'=' * 90}")
-    print("Marginal (10-30% edge — do NOT bet these; shown for context)")
-    print(f"{'=' * 90}")
-    mid = df[(df["edge"] >= 0.10) & (df["edge"] < 0.30)]
-    if len(mid) > 0:
-        print(mid.to_string(
-            index=False,
-            formatters={
-                "model_p": "{:.1%}".format,
-                "market_p_vigfree": "{:.1%}".format,
-                "edge": "{:+.1%}".format,
-                "ev_per_dollar": "{:+.4f}".format,
-            },
-        ))
-
+        print("No matchup cleared the 30% edge threshold.")
     if unresolved:
-        print(f"\n{len(unresolved)} matchups unresolved (driver not in entry list):")
+        print("Unresolved (name/finish not matched):")
         for a, b in unresolved:
             print(f"  {a} vs {b}")
 
