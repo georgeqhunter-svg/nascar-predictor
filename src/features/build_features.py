@@ -161,7 +161,6 @@ def build_features(
     rows: list[dict] = []
     for _, race_row in races.iterrows():
         race_id = race_row["race_id_short"]
-        tt = race_row["track_type"]
         track_slug = race_row.get("track_name", "")
         track = None
         # Try to match by name (case insensitive) to our TRACKS table.
@@ -169,6 +168,11 @@ def build_features(
             if slug.replace("_", " ").lower() == str(track_slug).lower():
                 track = tobj
                 break
+        # tracks.py is the authoritative source for track_type — parquet
+        # values can be stale after a reclassification (e.g., Pocono/Indy
+        # moved from "unique" to intermediate). Fall back to the parquet
+        # value only when the track isn't in the TRACKS table.
+        tt = track.track_type if track is not None else race_row["track_type"]
 
         e = entries[entries["race_id_short"] == race_id].sort_values("finish_pos")
         if e.empty:

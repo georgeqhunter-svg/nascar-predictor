@@ -42,8 +42,8 @@ import numpy as np
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION,
-    american_to_prob, per_driver_hazards,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION, DAMAGE_PENALTY,
+    american_to_prob, per_driver_hazards, per_driver_damage_hazards,
 )
 from src.models.predict_pipeline import calibrate_and_sample
 
@@ -52,7 +52,17 @@ LOCKBOX_VERSION = "v2"  # honest leave-one-race-out CV, no T_match
 
 
 def _norm(s: str) -> str:
-    return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().strip().lower()
+    # Accent-fold and lower.
+    norm = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().strip().lower()
+    # Canonicalize middle-name variants: "john hunter nemechek" and
+    # "john h. nemechek" both -> "john h nemechek". Same rule as
+    # backtest_oddslogic_v5.py so cache and lockbox agree.
+    parts = norm.split()
+    if len(parts) >= 3:
+        first, middles, last = parts[0], parts[1:-1], parts[-1]
+        middles_short = " ".join(m.rstrip(".")[0] for m in middles if m)
+        norm = f"{first} {middles_short} {last}".strip()
+    return norm
 
 
 def american_to_decimal(odds: int) -> float:
@@ -125,7 +135,9 @@ def main() -> None:
     rid = r.iloc[0]["race_id_short"]
     race_name = r.iloc[0].get("race_name", args.name)
     target_date_ts = r.iloc[0]["date"]
-    tt = r.iloc[0]["track_type"]
+    from src.features.tracks import resolve_track_type
+    tt = resolve_track_type(r.iloc[0].get("track_name", ""),
+                            fallback=r.iloc[0]["track_type"])
     print(f"Target: {race_name} ({rid}, {tt})")
 
     train = features[(features["date"] < target_date_ts) & (features["finish_pos"] > 0)]
@@ -138,6 +150,8 @@ def main() -> None:
         hazard_lookup=HAZARD,
         per_driver_hazards_fn=per_driver_hazards,
         dnf_dispersion_by_type=DNF_DISPERSION,
+        per_driver_damage_hazards_fn=per_driver_damage_hazards,
+        damage_penalty=DAMAGE_PENALTY,
     )
     matchup_mtx = sr.matchup_mtx
 

@@ -24,13 +24,27 @@ def sample_finishing_orders(
     n_samples: int = 5000,
     rng: np.random.Generator | None = None,
     dnf_dispersion: float = 0.0,
+    damage_hazards: np.ndarray | None = None,
+    damage_penalty: float = 3.0,
 ) -> np.ndarray:
     """Return an (n_samples, n_drivers) integer array; entry [k, i] = finish
     position of driver i in sample k (1 = winner).
 
+    Three outcome buckets per driver per sample:
+      - Clean race → score from Plackett-Luce Gumbel
+      - Damage (car takes contact / penalty / limps home): score gets a
+        large negative bump so the driver sorts near the bottom BUT NOT AT
+        THE BACK. Produces the realistic "P5 pace, finished P22" outcomes.
+      - DNF: score dumped to -1e6, driver sorts last.
+
     dnf_dispersion > 0 correlates DNFs within each sampled race via a shared
     Gamma frailty (mean 1, variance = dnf_dispersion) multiplying all hazards.
     Exactly 0.0 reproduces the old independent-hazard behavior (same draws).
+
+    damage_hazards: per-driver probability of a damage-day (typically 5-15%
+    depending on track type). Empirical values in fit_damage.py.
+    damage_penalty: how many score standard deviations to subtract when
+    damaged. 3.0 produces roughly a P20-P25 outcome for a P5-pace driver.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -42,6 +56,18 @@ def sample_finishing_orders(
     u = np.clip(u, 1e-12, 1.0)
     gumbel = -np.log(-np.log(u))
     scores = strengths[None, :] + gumbel
+
+    # Damage injection — happens BEFORE DNF. Damaged-but-alive drivers get a
+    # large but finite score penalty so they sort low without being absolute
+    # last. Uniform penalty in [1x, 2x] * damage_penalty gives some variance
+    # (some damage days end P18, some end P30).
+    if damage_hazards is not None:
+        assert damage_hazards.shape == strengths.shape
+        damage_draw = rng.random((n_samples, n_drivers))
+        damaged = damage_draw < damage_hazards[None, :]
+        if damaged.any():
+            penalty = rng.uniform(1.0, 2.0, size=(n_samples, n_drivers)) * damage_penalty
+            scores = np.where(damaged, scores - penalty, scores)
 
     # DNF injection with optional race-level frailty.
     if dnf_dispersion > 0.0:

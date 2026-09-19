@@ -45,6 +45,8 @@ def calibrate_and_sample(
     seed: int = 42,
     verbose: bool = True,
     dnf_dispersion_by_type: dict[str, float] | None = None,
+    per_driver_damage_hazards_fn=None,   # signature: (target_df, tt) -> np.ndarray | None
+    damage_penalty: float = 3.0,
 ) -> SampledRace:
     """Fit model + honest T (leave-one-race-out CV) + sample.
 
@@ -114,9 +116,13 @@ def calibrate_and_sample(
     rng = np.random.default_rng(seed)
     disp = (dnf_dispersion_by_type.get(track_type, 0.0)
             if dnf_dispersion_by_type else 0.0)
+    dam = (per_driver_damage_hazards_fn(target, track_type)
+           if per_driver_damage_hazards_fn is not None else None)
     positions = dist.sample_finishing_orders(
         blended / T_effective, haz, n_samples=n_samples, rng=rng,
         dnf_dispersion=disp,
+        damage_hazards=dam,
+        damage_penalty=damage_penalty,
     )
     matchup_mtx = dist.matchup_probs(positions)
 

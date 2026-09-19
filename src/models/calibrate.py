@@ -71,11 +71,19 @@ def find_best_temperature(
     Returns (best_T, per-T loss table).
     """
     if T_grid is None:
-        T_grid = np.array([0.25, 0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0, 8.0, 15.0])
-    rng = np.random.default_rng(seed)
+        # Floor at 1.0. Sharpening values (< 1.0) never win in practice —
+        # the model is already sharp enough from GBM+PL blending, and any
+        # value below 1 makes the tails worse. Kimi's audit noted the
+        # sub-1 grid points were dead weight allowing occasional noise wins.
+        T_grid = np.array([1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 8.0, 15.0])
 
     rows = []
     for T in T_grid:
+        # Reseed per-T (Common Random Numbers). Previously one rng was
+        # shared across the whole grid, so each T saw different MC draws
+        # and the argmin could be won on noise. With CRN each T evaluates
+        # the same underlying random path — noise cancels, signal wins.
+        rng = np.random.default_rng(seed)
         losses = []
         winner_losses = []
         for ridx, r in enumerate(val_races):

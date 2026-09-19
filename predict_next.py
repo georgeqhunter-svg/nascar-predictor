@@ -21,7 +21,8 @@ import numpy as np
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION, per_driver_hazards,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION, DAMAGE_PENALTY,
+    per_driver_hazards, per_driver_damage_hazards,
 )
 from src.models.predict_pipeline import calibrate_and_sample
 
@@ -58,7 +59,9 @@ def main():
         return
     rid = r.iloc[0]["race_id_short"]
     target_date_ts = r.iloc[0]["date"]
-    tt = r.iloc[0]["track_type"]
+    from src.features.tracks import resolve_track_type
+    tt = resolve_track_type(r.iloc[0].get("track_name", ""),
+                            fallback=r.iloc[0]["track_type"])
     print(f"Target: {r.iloc[0]['race_name']}  ({tt}, date={target_date_ts.date()})")
 
     train = features[(features["date"] < target_date_ts) & (features["finish_pos"] > 0)]
@@ -75,6 +78,8 @@ def main():
         hazard_lookup=HAZARD,
         per_driver_hazards_fn=per_driver_hazards,
         dnf_dispersion_by_type=DNF_DISPERSION,
+        per_driver_damage_hazards_fn=per_driver_damage_hazards,
+        damage_penalty=DAMAGE_PENALTY,
     )
 
     # positions is (N_SAMPLES, n_drivers) — 1-indexed (1=winner).

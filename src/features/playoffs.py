@@ -20,17 +20,32 @@ import pandas as pd
 def derive_playoff_drivers(entries: pd.DataFrame, races: pd.DataFrame) -> set[tuple[int, str]]:
     """Return set of (season, driver_name) tuples that are playoff drivers.
 
-    We identify them as drivers who earned any playoff points in a playoff
-    race (playoff_round > 0). NASCAR only awards playoff_points_earned to
-    the 16 playoff drivers during playoff races.
+    Uses REGULAR SEASON data only. Previously this function summed
+    playoff_points across playoff races themselves — which meant training
+    labels for playoff race 1 were informed by outcomes of playoff races
+    2-10 (future info). Kimi's audit caught this: ~1,440 training entries
+    carried leaky labels while the 2026 backtest season had
+    playoff_points=0 across the board and never used the feature at all.
+
+    Playoff eligibility is determined by regular-season performance
+    (points through race 26). Playoff points earned in-season for stage
+    wins and race wins are the cleanest single signal. Every driver in
+    the top 16 of regular-season points, plus every regular-season race
+    winner, makes the playoffs.
     """
     if "playoff_round" not in races.columns or "playoff_points" not in entries.columns:
         return set()
-    playoff_race_ids = races.loc[races["playoff_round"] > 0, "race_id_short"]
-    sub = entries[entries["race_id_short"].isin(playoff_race_ids)].copy()
+    # Regular-season races only — NO playoff races in the sum.
+    reg_race_ids = races.loc[races["playoff_round"] == 0, "race_id_short"]
+    sub = entries[entries["race_id_short"].isin(reg_race_ids)].copy()
     sub["playoff_points"] = pd.to_numeric(sub["playoff_points"], errors="coerce").fillna(0)
-    # Any driver with cumulative playoff_points > 0 across playoff races is in.
+    # Sum regular-season playoff points per (season, driver).
     tallies = sub.groupby(["season", "driver"])["playoff_points"].sum()
+    # Any driver with regular-season playoff points > 0 is very likely a
+    # playoff driver (stage/race winners qualify). This is a slightly
+    # conservative approximation — a driver who makes the field on
+    # points-only with zero wins and zero stage points gets excluded —
+    # but it's HONEST at every point in the season.
     return set(tallies[tallies > 0].index)
 
 

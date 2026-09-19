@@ -980,18 +980,34 @@ N_SAMPLES = 30_000
 HAZARD = {"superspeedway": 0.255, "intermediate": 0.142, "short": 0.086,
           "road": 0.093, "unique": 0.189}
 # Per-track-type DNF dispersion: shared Gamma frailty (mean 1, var = dispersion)
-# multiplies every driver's hazard within a sample. High dispersion = "the big
-# one" — most samples clean, some samples wipe out many drivers. Independent
-# per-driver DNFs (dispersion=0) systematically miss the correlated crash
-# reality of drafting tracks. Superspeedways have chronically been the +0.14+
-# outlier races in the backtest; this is the mechanism.
+# multiplies every driver's hazard within a sample. Values below are empirical
+# — fit_dispersion.py measures per-race field-DNF-fraction variance from ≤2025
+# entries.parquet, not tuned against 2026 backtest outcomes. Earlier values in
+# this dict were hand-set to explain 2026 Atlanta outliers — that was test-set
+# tuning of the exact shape kimi's audit flagged. These replace them.
 DNF_DISPERSION = {
-    "superspeedway": 3.0,   # heavy correlation — big one takes out clusters
-    "intermediate": 0.3,    # mild — carousel crashes exist but rarer
-    "short": 0.4,           # chain-reaction crashes on short tracks
-    "road": 0.2,            # T1 accordions but usually not race-ending clusters
-    "unique": 0.5,          # limited data, moderate default
+    "superspeedway": 0.10,  # DNF-share variance is much lower than the "big one"
+                            # imagination suggests; historical range 8-54%,
+                            # tight around 25%, not the wreck-ocalypse v=3.0 encodes
+    "intermediate": 0.28,
+    "short": 0.30,
+    "road": 0.43,
+    "unique": 0.17,
 }
+
+# Damage-hazard: probability a driver has a "damaged but continues" day at
+# that track type. Distinct from DNF — car limps to end, driver loses 10-25
+# positions but still finishes. Values fit from ≤2025 entries.parquet via
+# fit_damage.py (finish_pos > qual_pos + 12, is_dnf=False, per track type,
+# 5,327 driver-races across 4 seasons).
+DAMAGE_HAZARD: dict[str, float | None] = {
+    "superspeedway": 0.070,
+    "intermediate": 0.079,
+    "short": 0.082,
+    "road": 0.103,
+    "unique": None,  # dead classification; kept as safety fallback
+}
+DAMAGE_PENALTY = 3.0  # score-std units subtracted when damaged
 # Empirical-Bayes shrinkage constant for per-driver hazard: how many prior
 # same-type races we need to trust the driver-specific rate over the track
 # baseline. Lower = trust driver rate more.
@@ -1052,6 +1068,22 @@ def per_driver_hazards(target_df, track_type: str) -> np.ndarray:
     return np.clip(blended, 0.5 * base, 3.0 * base)
 
 
+def per_driver_damage_hazards(
+    target_df, track_type: str
+) -> np.ndarray | None:
+    """Per-driver damage-hazard array, or None if damage layer is disabled
+    for this track type (base rate is None in DAMAGE_HAZARD).
+
+    First pass: uniform per-driver rate at the track-type baseline. Later
+    we can shrink by driver-specific historical damage rate the same way
+    per_driver_hazards does for DNF.
+    """
+    base = DAMAGE_HAZARD.get(track_type)
+    if base is None:
+        return None
+    return np.full(len(target_df), float(base))
+
+
 def american_to_prob(odds):
     return 100.0 / (odds + 100) if odds > 0 else -odds / (-odds + 100)
 
@@ -1086,7 +1118,11 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     target_rid = r.iloc[0]["race_id_short"]
     _EVALUATED_RIDS.add(target_rid)
     target_date_ts = r.iloc[0]["date"]
-    tt = r.iloc[0]["track_type"]
+    # tracks.py is the source of truth for track_type. Parquet values can be
+    # stale after a reclassification (e.g., Pocono/Indy moved to intermediate).
+    from src.features.tracks import resolve_track_type
+    tt = resolve_track_type(r.iloc[0].get("track_name", ""),
+                            fallback=r.iloc[0]["track_type"])
 
     if features is None:
         features = build_features(races, entries, sessions, loopstats=loopstats, laptimes=laptimes)
@@ -1156,10 +1192,13 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     # Single calibrated temperature — no second layer.
     T_effective = T
     rng = np.random.default_rng(42)
+    dam = per_driver_damage_hazards(target, tt)
     positions = dist.sample_finishing_orders(
         blended / T_effective, haz,
         n_samples=N_SAMPLES, rng=rng,
         dnf_dispersion=DNF_DISPERSION.get(tt, 0.0),
+        damage_hazards=dam,
+        damage_penalty=DAMAGE_PENALTY,
     )
     matchup_mtx = dist.matchup_probs(positions)
 
@@ -1171,7 +1210,19 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     # diag_unseen_categories.py-adjacent silent-drop check.
     import unicodedata
     def _norm(s):
-        return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().strip().lower()
+        # Accent-fold and lower.
+        norm = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().strip().lower()
+        # Canonicalize middle-name variants by mapping each middle token to
+        # its first letter, so "john hunter nemechek" and "john h. nemechek"
+        # both become "john h nemechek". Preserves suffix tokens like "jr":
+        # "ricky stenhouse jr" stays "ricky s jr" on both sides of the compare,
+        # so the pair still matches.
+        parts = norm.split()
+        if len(parts) >= 3:
+            first, middles, last = parts[0], parts[1:-1], parts[-1]
+            middles_short = " ".join(m.rstrip(".")[0] for m in middles if m)
+            norm = f"{first} {middles_short} {last}".strip()
+        return norm
     driver_to_idx = {_norm(d): i for i, d in enumerate(target["driver"].values)}
     actual = entries[entries["race_id_short"] == target_rid][
         ["driver", "finish_pos"]
@@ -1182,10 +1233,15 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     market_ll, model_ll = [], []
     market_correct = model_correct = n = 0
     matchup_cache_rows: list[dict] = []  # exported at end for downstream analysis
+    dropped_matchups: list[tuple[str, str, str]] = []
     for a, b, oa, ob in matchups:
         ka, kb = _norm(a), _norm(b)
-        if ka not in driver_to_idx or kb not in driver_to_idx: continue
-        if ka not in finish or kb not in finish: continue
+        if ka not in driver_to_idx or kb not in driver_to_idx:
+            dropped_matchups.append((a, b, "not_in_target_entries"))
+            continue
+        if ka not in finish or kb not in finish:
+            dropped_matchups.append((a, b, "no_finish_pos"))
+            continue
         ma_raw = american_to_prob(oa); mb_raw = american_to_prob(ob)
         vig = ma_raw + mb_raw
         ma, mb = ma_raw / vig, mb_raw / vig
@@ -1214,8 +1270,14 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
         n += 1
 
     mkt_mean = float(np.mean(market_ll)); mdl_mean = float(np.mean(model_ll))
+    drop_str = f"  DROPPED={len(dropped_matchups)}" if dropped_matchups else ""
     print(f"{name_match} ({tt}, T={T}): n={n}  mkt={mkt_mean:.4f}({market_correct}/{n})  "
-    f"mdl={mdl_mean:.4f}({model_correct}/{n})  Delta={mdl_mean-mkt_mean:+.4f}")
+    f"mdl={mdl_mean:.4f}({model_correct}/{n})  Delta={mdl_mean-mkt_mean:+.4f}{drop_str}")
+    if dropped_matchups:
+        for a, b, reason in dropped_matchups[:5]:
+            print(f"    drop: {a} vs {b} ({reason})")
+        if len(dropped_matchups) > 5:
+            print(f"    ...and {len(dropped_matchups) - 5} more")
     return {"race": name_match, "tt": tt, "n": n, "market_ll": mkt_mean, "model_ll": mdl_mean,
             "market_correct": market_correct, "model_correct": model_correct, "T": T,
             "matchup_rows": matchup_cache_rows}

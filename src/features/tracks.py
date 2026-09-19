@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-TrackType = Literal["superspeedway", "intermediate", "short", "road", "unique"]
+TrackType = Literal["superspeedway", "intermediate", "short", "road"]
 
 
 @dataclass(frozen=True)
@@ -63,14 +63,23 @@ TRACKS: dict[str, Track] = {
         Track("Indianapolis_Motor_Speedway_Road_Course", "Indy RC", 2.439, "road", None, "road", 39.795, -86.234),
         Track("Autodromo_Hermanos_Rodriguez", "Mexico City", 2.674, "road", None, "road", 19.404, -99.089),
 
-        Track("Pocono_Raceway", "Pocono", 2.500, "oval", 14.0, "unique", 41.055, -75.512),
-        Track("Indianapolis_Motor_Speedway", "Indianapolis", 2.500, "oval", 9.0, "unique", 39.795, -86.234),
+        # Pocono + Indy — reclassified from "unique" to intermediate. Both race
+        # with intermediate engine packages, aero-dependent, fuel-window pit
+        # strategy, no pack racing. Track length + banking differences are
+        # captured by the model's continuous features (track_length_mi,
+        # track_banking_deg) so they don't need a separate type bucket.
+        Track("Pocono_Raceway", "Pocono", 2.500, "oval", 14.0, "intermediate", 41.055, -75.512),
+        Track("Indianapolis_Motor_Speedway", "Indianapolis", 2.500, "oval", 9.0, "intermediate", 39.795, -86.234),
 
         Track("North_Wilkesboro_Speedway", "North Wilkesboro", 0.625, "oval", 14.0, "short", 36.132, -81.055),
         Track("Chicago_Street_Race", "Chicago Street", 2.200, "street", None, "road", 41.876, -87.622),
         Track("Auto_Club_Speedway", "Auto Club", 2.000, "oval", 14.0, "intermediate", 34.089, -117.501),
         Track("Road_America", "Road America", 4.048, "road", None, "road", 43.798, -87.995),
-        Track("Bristol_Motor_Speedway_Dirt", "Bristol Dirt", 0.533, "dirt", 30.0, "unique", 36.516, -82.257),
+        # Bristol Dirt was a one-off dirt experiment 2021-2023 — retired. Kept
+        # so historical races validate; classified as "short" (closer to short-
+        # track racing dynamics than intermediate) as part of scrapping the
+        # "unique" category.
+        Track("Bristol_Motor_Speedway_Dirt", "Bristol Dirt", 0.533, "dirt", 30.0, "short", 36.516, -82.257),
         Track("Chicagoland_Speedway", "Chicagoland", 1.500, "oval", 18.0, "intermediate", 41.475, -88.058),
         Track("San_Diego_Street_Course", "San Diego Street", 2.100, "street", None, "road", 32.716, -117.161),
     ]
@@ -82,6 +91,21 @@ TRACKS: dict[str, Track] = {
 def get_track(slug: str) -> Track | None:
     """Look up a track by racing-reference slug."""
     return TRACKS.get(slug)
+
+
+def resolve_track_type(track_name: str, fallback: str = "intermediate") -> str:
+    """Return the authoritative track_type for a race, per tracks.py.
+
+    Parquet-stored track_type values can go stale after a reclassification
+    (e.g., Pocono/Indy moved from "unique" to "intermediate"). This helper
+    matches by track_name against the TRACKS table so all callers stay in
+    sync with the current classification.
+    """
+    slug_key = str(track_name).lower()
+    for slug, tobj in TRACKS.items():
+        if slug.replace("_", " ").lower() == slug_key:
+            return tobj.track_type
+    return fallback
 
 
 def classify_by_slug(slug: str) -> TrackType:
