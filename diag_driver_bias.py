@@ -21,6 +21,7 @@ from the honest walk-forward backtest.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -33,9 +34,27 @@ MIN_APPEARANCES = 10  # drivers must appear this many times to show
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--recent-races", type=int, default=None,
+                    help="Only include the most recent N races (by race_idx). "
+                         "Use to check whether historical driver biases still "
+                         "apply or if the market/model have adapted.")
+    ap.add_argument("--min-appearances", type=int, default=None,
+                    help=f"Override MIN_APPEARANCES (default {MIN_APPEARANCES}).")
+    args = ap.parse_args()
+
     if not CACHE.exists():
         raise SystemExit(f"No cache at {CACHE}. Run backtest first.")
     df = pd.read_parquet(CACHE)
+
+    if args.recent_races is not None:
+        max_idx = df["race_idx"].max()
+        threshold = max_idx - args.recent_races + 1
+        df = df[df["race_idx"] >= threshold].copy()
+        print(f"Filtered to most recent {args.recent_races} races "
+              f"({df['race_idx'].nunique()} unique races, {len(df)} matchups)\n")
+
+    min_app = args.min_appearances or MIN_APPEARANCES
 
     # Compute vig-free market probability from odds.
     ma_raw = df["odds_a"].apply(american_to_prob)
@@ -79,7 +98,7 @@ def main():
         "pick_n": int(g["model_picked"].sum()),
     })).reset_index()
 
-    agg = agg[agg["n"] >= MIN_APPEARANCES].copy()
+    agg = agg[agg["n"] >= min_app].copy()
     agg["abs_bias"] = agg["bias_vs_market"].abs()
 
     print("=" * 88)

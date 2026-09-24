@@ -26,7 +26,9 @@ except ImportError as e:
 FEATURES: list[str] = [
     "pl_driver", "pl_team", "pl_driver_track", "pl_effective",
     "qual_z", "practice_z", "start_pos",
-    "track_length_mi", "track_banking_deg", "race_distance_mi", "restrictor_plate",
+    "track_length_mi", "track_banking_deg", "race_distance_mi",
+    # `restrictor_plate` (gain 6.6) removed 2026-09-24 — captured by
+    # track_length_mi + track_banking_deg + track_type continuous features.
     "avg_finish_5", "avg_finish_10", "avg_finish_20",
     "dnf_rate_10", "top10_rate_10",
     "season_wins_ytd", "season_top5_ytd", "season_top10_ytd",
@@ -39,20 +41,23 @@ FEATURES: list[str] = [
     "team_teammate_qual_z", "team_teammate_practice_z",
     "mech_dnf_rate_10", "crash_dnf_rate_10", "crash_dnf_rate_at_type_10",
     # Track-type-restricted rolling (spans seasons, not YTD).
+    # `races_at_type_last_10` (gain 0.1) removed — no signal, sample-count only.
     "avg_finish_at_type_last_5", "avg_finish_at_type_last_10",
-    "races_at_type_last_10",
     # Tire-degradation (per-stint pace slope), restricted to same track_type.
-    "tire_decay_type_10", "tire_retention_type_10", "tire_races_type",
+    # `tire_races_type` (gain 1.8) removed — sample-count only.
+    "tire_decay_type_10", "tire_retention_type_10",
     # Track-specific driver history.
     "races_at_track", "avg_finish_at_track", "best_finish_at_track",
     # Team-track-type rolling.
     "team_avg_finish_at_type", "team_races_at_type",
-    "tm_wpct_20", "tm_adj_wpct_20", "tm_races_20",
+    # `tm_races_20` (gain 6.5) removed — sample-count only. Keep tm_wpct.
+    "tm_wpct_20", "tm_adj_wpct_20",
     # Momentum.
     "momentum_3",
-    # Playoff pressure.
-    "playoff_round", "races_to_cutoff", "in_playoffs",
-    "is_playoff_driver", "is_elimination_race",
+    # Playoff pressure — dropped 2026-09-24 after audit fixes made the
+    # is_playoff_driver leak safe but the feature contribution collapsed.
+    # `playoff_round` (3.9), `races_to_cutoff` (0.0), `in_playoffs` (0.1),
+    # `is_playoff_driver` (1.3), `is_elimination_race` (0.6) all removed.
     # Loop-data rolling features (NaN if driver has no prior loop data yet).
     "loop_avg_ps_5", "loop_avg_ps_10",
     "loop_quality_passes_5", "loop_quality_passes_10",
@@ -76,17 +81,20 @@ FEATURES: list[str] = [
     "qual_to_finish_delta_at_type_10",
     "manuf_avg_finish_at_type_10",
     # Track-specific rolling (last 5/10 races AT THIS EXACT TRACK).
+    # `races_at_track_last_10` (gain 0.6) removed — sample-count only.
     "avg_finish_at_track_last_5", "avg_finish_at_track_last_10",
-    "best_finish_at_track_last_10", "races_at_track_last_10",
+    "best_finish_at_track_last_10",
     # LapRaptor practice-pace features (best-lap, best 5/10-lap window, and
     # lap-to-lap consistency from THIS weekend's practice).
+    # `has_practice_data` (gain 0.1) removed — dead flag.
     "practice_best_speed_z", "practice_5lap_avg_z", "practice_10lap_avg_z",
-    "practice_consistency_z", "practice_laps_run_z", "has_practice_data",
+    "practice_consistency_z", "practice_laps_run_z",
     # Expanded manufacturer × track-type interactions.
+    # `drv_manuf_type_races_10` (gain 6.5) removed — sample-count only.
     "manuf_avg_finish_at_type_5_v2", "manuf_avg_finish_at_type_10_v2",
     "manuf_win_rate_at_type_10", "manuf_top5_rate_at_type_10",
     "manuf_top10_rate_at_type_10", "manuf_finish_std_at_type_10",
-    "drv_manuf_type_avg_finish_10", "drv_manuf_type_races_10",
+    "drv_manuf_type_avg_finish_10",
     # Weather features: this race's conditions.
     "race_temp_max_f", "race_wind_max_mph", "race_humidity_pct", "race_precip_in",
     # Weather features: driver's rolling performance in similar conditions.
@@ -94,9 +102,16 @@ FEATURES: list[str] = [
     "wx_cool_avg_finish", "wx_cool_races",
     "wx_windy_avg_finish", "wx_windy_races",
     "wx_wet_avg_finish", "wx_wet_races",
+    # New signals (2026-09-24) — see src/features/new_signals.py.
+    "exp_finish_from_start", "start_stickiness_at_type",
+    "green_pace_pct_5", "green_pace_pct_10",
+    "cc_races_together", "cc_avg_finish_10",
 ]
 
-CATEGORICAL: list[str] = ["track_type", "driver", "team", "manufacturer"]
+# `track_type` categorical (gain 0.0) removed 2026-09-24 — GBM never split
+# on it; continuous track features (length, banking, distance) capture what
+# type-bucketing would.
+CATEGORICAL: list[str] = ["driver", "team", "manufacturer"]
 
 
 # Frozen category universe: pandas `.astype("category")` infers categories per

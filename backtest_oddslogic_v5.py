@@ -948,6 +948,53 @@ ATLANTA_SPRING_2026 = [
     ("Daniel Suarez", "Erik Jones", -145, 125),
 ]
 
+# FanDuel closing lines for Enjoy Illinois 300 (Gateway, 2026-09-13).
+ILLINOIS_2026 = [
+    ("Daniel Suarez",   "Michael McDowell",  -134,  106),
+    ("Joey Logano",     "William Byron",     -280,  210),
+    ("Josh Berry",      "Bubba Wallace",     -108, -118),
+    ("Ross Chastain",   "Brad Keselowski",   -122, -104),
+    ("Ross Chastain",   "Chris Buescher",    -120, -110),
+    ("Ryan Blaney",     "Kyle Larson",       -142,  112),
+    ("Carson Hocevar",  "Ryan Preece",       -140,  110),
+    ("Ty Gibbs",        "Tyler Reddick",     -130,  100),
+    ("Austin Cindric",  "Josh Berry",        -115, -115),
+]
+
+# Circa Sports closing lines for Bristol Bass Pro Shops Night Race (2026-09-19).
+BRISTOL_NIGHT_2026 = [
+    ("Kyle Larson",       "Denny Hamlin",       -140,  120),
+    ("Kyle Larson",       "Ryan Blaney",        -190,  165),
+    ("Kyle Larson",       "Christopher Bell",   -180,  155),
+    ("Kyle Larson",       "Ty Gibbs",           -145,  125),
+    ("Denny Hamlin",      "Ryan Blaney",        -170,  150),
+    ("Denny Hamlin",      "Christopher Bell",   -155,  135),
+    ("Denny Hamlin",      "Ty Gibbs",           -130,  110),
+    ("Ryan Blaney",       "Christopher Bell",    100, -120),
+    ("Ryan Blaney",       "Ty Gibbs",            130, -150),
+    ("Christopher Bell",  "Ty Gibbs",            120, -140),
+    ("William Byron",     "Chase Briscoe",      -110, -110),
+    ("William Byron",     "Joey Logano",         130, -150),
+    ("William Byron",     "Tyler Reddick",      -135,  115),
+    ("William Byron",     "Chase Elliott",      -165,  145),
+    ("Chase Briscoe",     "Joey Logano",         105, -125),
+    ("Chase Briscoe",     "Tyler Reddick",      -140,  120),
+    ("Chase Briscoe",     "Chase Elliott",      -180,  155),
+    ("Joey Logano",       "Tyler Reddick",      -160,  140),
+    ("Joey Logano",       "Chase Elliott",      -190,  165),
+    ("Tyler Reddick",     "Chase Elliott",      -140,  120),
+    ("Chris Buescher",    "Carson Hocevar",      180, -210),
+    ("Chris Buescher",    "Brad Keselowski",     150, -170),
+    ("Chris Buescher",    "Ross Chastain",      -110, -110),
+    ("Chris Buescher",    "Bubba Wallace",       120, -140),
+    ("Carson Hocevar",    "Brad Keselowski",    -165,  145),
+    ("Carson Hocevar",    "Ross Chastain",      -195,  170),
+    ("Carson Hocevar",    "Bubba Wallace",      -165,  145),
+    ("Brad Keselowski",   "Ross Chastain",      -140,  120),
+    ("Brad Keselowski",   "Bubba Wallace",      -125,  105),
+    ("Ross Chastain",     "Bubba Wallace",       120, -140),
+]
+
 RACES = [
     ("2026-02-22", "Autotrader 400",   ATLANTA_SPRING_2026),
     ("2026-03-01", "Duramax Grand Prix", COTA),
@@ -972,6 +1019,8 @@ RACES = [
     ("2026-08-23", "Dollar Tree 301",  LOUDON),
     ("2026-08-29", "Coke Zero",        DAYTONA),
     ("2026-09-06", "Southern 500",     DARLINGTON),
+    ("2026-09-13", "Enjoy Illinois",   ILLINOIS_2026),
+    ("2026-09-19", "Bass Pro Shops",   BRISTOL_NIGHT_2026),
 ]
 
 TIGHT_REG = {"num_leaves": 31, "min_data_in_leaf": 25, "lambda_l2": 2.0}
@@ -1007,7 +1056,25 @@ DAMAGE_HAZARD: dict[str, float | None] = {
     "road": 0.103,
     "unique": None,  # dead classification; kept as safety fallback
 }
-DAMAGE_PENALTY = 3.0  # score-std units subtracted when damaged
+# Per-track-type damage penalty in score-std units. The sampler multiplies
+# this by uniform(1.0, 2.0) per (sample, driver), so the effective penalty
+# distribution is [DAMAGE_PENALTY, 2 * DAMAGE_PENALTY].
+#
+# Tuned from the first damage-hazard backtest: uniform 3.0 helped roads and
+# Pocono (Sonoma -27 bps, Pocono -23 bps) but hurt shorts (Food City +12
+# bps, Cook Out +15 bps, Window World +4 bps). Root cause: short-track score
+# distributions are already tighter (drivers bunch closer together), so the
+# same penalty pushes damaged drivers further back on shorts than on roads.
+# Shorts get a smaller penalty to match the empirical ~17-position median
+# gap in the tighter score space.
+DAMAGE_PENALTY_BY_TYPE: dict[str, float] = {
+    "superspeedway": 3.0,   # wide score dist, 19-pos empirical median gap
+    "intermediate": 2.5,    # medium score dist, 17-pos empirical median
+    "short": 2.0,           # tightest score dist — less penalty to match gap
+    "road": 3.0,            # wide score dist, high damage rate, 17.5-pos gap
+    "unique": 2.5,          # fallback
+}
+DAMAGE_PENALTY = 3.0  # legacy fallback — replaced by DAMAGE_PENALTY_BY_TYPE
 # Empirical-Bayes shrinkage constant for per-driver hazard: how many prior
 # same-type races we need to trust the driver-specific rate over the track
 # baseline. Lower = trust driver rate more.
@@ -1193,12 +1260,13 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     T_effective = T
     rng = np.random.default_rng(42)
     dam = per_driver_damage_hazards(target, tt)
+    dam_pen = DAMAGE_PENALTY_BY_TYPE.get(tt, DAMAGE_PENALTY)
     positions = dist.sample_finishing_orders(
         blended / T_effective, haz,
         n_samples=N_SAMPLES, rng=rng,
         dnf_dispersion=DNF_DISPERSION.get(tt, 0.0),
         damage_hazards=dam,
-        damage_penalty=DAMAGE_PENALTY,
+        damage_penalty=dam_pen,
     )
     matchup_mtx = dist.matchup_probs(positions)
 

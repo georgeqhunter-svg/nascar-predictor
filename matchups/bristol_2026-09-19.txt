@@ -1,0 +1,57 @@
+# Circa Sports closing lines for Bass Pro Shops Night Race (Bristol, 2026-09-19).
+# Format: Driver A, Driver B, oddsA, oddsB
+# 30 matchups total across the top drivers.
+
+# Larson matchups
+Kyle Larson,       Denny Hamlin,       -140,  120
+Kyle Larson,       Ryan Blaney,        -190,  165
+Kyle Larson,       Christopher Bell,   -180,  155
+Kyle Larson,       Ty Gibbs,           -145,  125
+
+# Hamlin matchups
+Denny Hamlin,      Ryan Blaney,        -170,  150
+Denny Hamlin,      Christopher Bell,   -155,  135
+Denny Hamlin,      Ty Gibbs,           -130,  110
+
+# Blaney matchups
+Ryan Blaney,       Christopher Bell,   +100, -120
+Ryan Blaney,       Ty Gibbs,           +130, -150
+
+# Bell / Gibbs
+Christopher Bell,  Ty Gibbs,           +120, -140
+
+# Byron matchups
+William Byron,     Chase Briscoe,      -110, -110
+William Byron,     Joey Logano,        +130, -150
+William Byron,     Tyler Reddick,      -135,  115
+William Byron,     Chase Elliott,      -165,  145
+
+# Briscoe matchups
+Chase Briscoe,     Joey Logano,        +105, -125
+Chase Briscoe,     Tyler Reddick,      -140,  120
+Chase Briscoe,     Chase Elliott,      -180,  155
+
+# Logano matchups
+Joey Logano,       Tyler Reddick,      -160,  140
+Joey Logano,       Chase Elliott,      -190,  165
+
+# Reddick / Elliott
+Tyler Reddick,     Chase Elliott,      -140,  120
+
+# Buescher matchups
+Chris Buescher,    Carson Hocevar,     +180, -210
+Chris Buescher,    Brad Keselowski,    +150, -170
+Chris Buescher,    Ross Chastain,      -110, -110
+Chris Buescher,    Bubba Wallace,      +120, -140
+
+# Hocevar matchups
+Carson Hocevar,    Brad Keselowski,    -165,  145
+Carson Hocevar,    Ross Chastain,      -195,  170
+Carson Hocevar,    Bubba Wallace,      -165,  145
+
+# Keselowski matchups
+Brad Keselowski,   Ross Chastain,      -140,  120
+Brad Keselowski,   Bubba Wallace,      -125,  105
+
+# Chastain / Wallace
+Ross Chastain,     Bubba Wallace,      +120, -140

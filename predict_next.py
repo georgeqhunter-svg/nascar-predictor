@@ -21,7 +21,9 @@ import numpy as np
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION, DAMAGE_PENALTY,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION,
+    DAMAGE_PENALTY, DAMAGE_PENALTY_BY_TYPE,
+    CV_N_ESTIMATORS, VAL_CAP_PER_TYPE,
     per_driver_hazards, per_driver_damage_hazards,
 )
 from src.models.predict_pipeline import calibrate_and_sample
@@ -29,7 +31,7 @@ from src.models.predict_pipeline import calibrate_and_sample
 
 # Bristol Motor Speedway — Bass Pro Shops Night Race (playoff, first round cutoff).
 TARGET_NAME = "Bass Pro Shops"
-TARGET_DATE = "2026-09-20"
+TARGET_DATE = "2026-09-19"
 
 
 def main():
@@ -80,6 +82,9 @@ def main():
         dnf_dispersion_by_type=DNF_DISPERSION,
         per_driver_damage_hazards_fn=per_driver_damage_hazards,
         damage_penalty=DAMAGE_PENALTY,
+        damage_penalty_by_type=DAMAGE_PENALTY_BY_TYPE,
+        cv_n_estimators=CV_N_ESTIMATORS,
+        val_cap_per_type=VAL_CAP_PER_TYPE,
     )
 
     # positions is (N_SAMPLES, n_drivers) — 1-indexed (1=winner).

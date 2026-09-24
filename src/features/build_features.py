@@ -40,6 +40,7 @@ from .rolling import compute_rolling
 from .tracks import TRACKS
 from .weather import compute_weather_features, load_or_fetch_weather
 from .manuf_type import compute_manuf_type
+from .new_signals import compute_new_signals
 
 
 def build_features(
@@ -438,4 +439,11 @@ def build_features(
             )
             update_from_race(ratings, race)
 
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    # New walk-forward signals: start-position expectation by track type,
+    # green-flag pace from laptimes, crew-chief continuity/performance.
+    new_sig = compute_new_signals(entries, races, laptimes)
+    n_before = len(out)
+    out = out.merge(new_sig, on=["race_id_short", "driver"], how="left")
+    assert len(out) == n_before, "new_signals merge duplicated rows"
+    return out

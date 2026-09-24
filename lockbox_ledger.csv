@@ -1,0 +1,3 @@
+graded_at,lockbox_version,race_id,race_name,date,season,track_type,T,n,model_ll,mkt_ll,delta,brier_model,brier_mkt,model_correct,mkt_correct,ev_won,ev_n,ev_profit,bets_n,bets_won,bets_profit,matchups_file
+2026-09-23T14:03:50,v2,2026-5625,Enjoy Illinois 300,2026-09-13,2026,intermediate,1.0,9,0.736117594191877,0.6529103263984254,0.08320726779345156,0.27022299827160495,0.2307269630085637,5,6,5,9,-0.39187645291393913,0,0,0.0,matchups/illinois_2026-09-13.txt
+2026-09-23T13:03:22,v2,2026-5626,Bass Pro Shops Night Race,2026-09-19,2026,short,1.0,30,0.5620367937445089,0.6271219545266966,-0.0650851607821877,0.1908470816296296,0.2175442826127624,21,21,17,30,1.6580464789629952,0,0,0.0,matchups/bristol_2026-09-19.txt

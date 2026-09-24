@@ -10,7 +10,9 @@ from __future__ import annotations
 import pandas as pd
 
 from backtest_oddslogic_v5 import (
-    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION, DAMAGE_PENALTY,
+    TIGHT_REG, ALPHA, N_SAMPLES, HAZARD, DNF_DISPERSION,
+    DAMAGE_PENALTY, DAMAGE_PENALTY_BY_TYPE,
+    CV_N_ESTIMATORS, VAL_CAP_PER_TYPE,
     american_to_prob, per_driver_hazards, per_driver_damage_hazards,
 )
 from src.models.predict_pipeline import calibrate_and_sample
@@ -18,13 +20,52 @@ from src.models.predict_pipeline import calibrate_and_sample
 
 # Bristol Motor Speedway — Bass Pro Shops Night Race (playoff, first round cutoff).
 TARGET_NAME = "Bass Pro Shops"
-TARGET_DATE = "2026-09-20"
+TARGET_DATE = "2026-09-19"
 
 
-# Posted matchups: (driver_a, driver_b, odds_a, odds_b)
-# Update per weekend from the sportsbook you're pricing against.
+# Circa Sports matchups for Bristol Bass Pro Shops Night Race (2026-09-19).
+# Sharp book — edges will be smaller than FanDuel. Our +25% edge threshold
+# from the backtest is calibrated against OddsLogic closes (sharp-book quality),
+# so Circa edges going through it are honest.
+# Format: (driver_a, driver_b, odds_a, odds_b)
 MATCHUPS: list[tuple[str, str, int, int]] = [
-    # Paste FanDuel (or preferred sharp book) matchups here once posted.
+    # Larson group
+    ("Kyle Larson",       "Denny Hamlin",       -140,  120),
+    ("Kyle Larson",       "Ryan Blaney",        -190,  165),
+    ("Kyle Larson",       "Christopher Bell",   -180,  155),
+    ("Kyle Larson",       "Ty Gibbs",           -145,  125),
+    # Hamlin group
+    ("Denny Hamlin",      "Ryan Blaney",        -170,  150),
+    ("Denny Hamlin",      "Christopher Bell",   -155,  135),
+    ("Denny Hamlin",      "Ty Gibbs",           -130,  110),
+    # Blaney / Bell / Gibbs cross
+    ("Ryan Blaney",       "Christopher Bell",    100, -120),
+    ("Ryan Blaney",       "Ty Gibbs",            130, -150),
+    ("Christopher Bell",  "Ty Gibbs",            120, -140),
+    # Byron / Briscoe / Logano / Reddick / Elliott
+    ("William Byron",     "Chase Briscoe",      -110, -110),
+    ("William Byron",     "Joey Logano",         130, -150),
+    ("William Byron",     "Tyler Reddick",      -135,  115),
+    ("William Byron",     "Chase Elliott",      -165,  145),
+    ("Chase Briscoe",     "Joey Logano",         105, -125),
+    ("Chase Briscoe",     "Tyler Reddick",      -140,  120),
+    ("Chase Briscoe",     "Chase Elliott",      -180,  155),
+    ("Joey Logano",       "Tyler Reddick",      -160,  140),
+    ("Joey Logano",       "Chase Elliott",      -190,  165),
+    ("Tyler Reddick",     "Chase Elliott",      -140,  120),
+    # Buescher group
+    ("Chris Buescher",    "Carson Hocevar",      180, -210),
+    ("Chris Buescher",    "Brad Keselowski",     150, -170),
+    ("Chris Buescher",    "Ross Chastain",      -110, -110),
+    ("Chris Buescher",    "Bubba Wallace",       120, -140),
+    # Hocevar group (fade candidates per driver-bias diag)
+    ("Carson Hocevar",    "Brad Keselowski",    -165,  145),
+    ("Carson Hocevar",    "Ross Chastain",      -195,  170),
+    ("Carson Hocevar",    "Bubba Wallace",      -165,  145),
+    # Keselowski / Chastain / Wallace cross
+    ("Brad Keselowski",   "Ross Chastain",      -140,  120),
+    ("Brad Keselowski",   "Bubba Wallace",      -125,  105),
+    ("Ross Chastain",     "Bubba Wallace",       120, -140),
 ]
 
 
@@ -78,6 +119,9 @@ def main():
         dnf_dispersion_by_type=DNF_DISPERSION,
         per_driver_damage_hazards_fn=per_driver_damage_hazards,
         damage_penalty=DAMAGE_PENALTY,
+        damage_penalty_by_type=DAMAGE_PENALTY_BY_TYPE,
+        cv_n_estimators=CV_N_ESTIMATORS,
+        val_cap_per_type=VAL_CAP_PER_TYPE,
     )
 
     driver_to_idx = {d: i for i, d in enumerate(target["driver"].values)}

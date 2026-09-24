@@ -59,3 +59,7 @@ logs/
 
 # OS
 desktop.ini
+
+# Scratch backup copies (e.g. backtest_oddslogic_v5.py.bak, .formbak, .alphabak)
+*.bak
+*.*bak

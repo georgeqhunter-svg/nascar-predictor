@@ -57,11 +57,11 @@ entries["date"] = pd.to_datetime(entries["date"])
 
 # Bristol Bass Pro Shops Night Race.
 target = entries[
-    (entries["date"] == pd.Timestamp("2026-09-20"))
+    (entries["date"] == pd.Timestamp("2026-09-19"))
     & (entries["season"] == 2026)
 ]
 if target.empty:
-    print("Bristol race not found — check date 2026-09-20")
+    print("Bristol race not found — check date 2026-09-19")
     raise SystemExit(1)
 rid = target["race_id_short"].iloc[0]
 print(f"Patching {rid}, {len(target)} drivers on file")

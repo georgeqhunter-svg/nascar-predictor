@@ -41,17 +41,31 @@ def calibrate_and_sample(
     hazard_lookup: dict,
     per_driver_hazards_fn,
     n_estimators: int = 15,
+    cv_n_estimators: int | None = None,
     val_start: int = 30,
+    val_cap_per_type: int | None = None,
     seed: int = 42,
     verbose: bool = True,
     dnf_dispersion_by_type: dict[str, float] | None = None,
     per_driver_damage_hazards_fn=None,   # signature: (target_df, tt) -> np.ndarray | None
     damage_penalty: float = 3.0,
+    damage_penalty_by_type: dict[str, float] | None = None,
 ) -> SampledRace:
     """Fit model + honest T (leave-one-race-out CV) + sample.
 
     hazard_lookup:      per-track-type baseline dict (HAZARD)
     per_driver_hazards_fn: the function that blends per-driver DNF/crash rates
+
+    Speedup knobs (mirror the ones in backtest_oddslogic_v5.py):
+      cv_n_estimators:    n_estimators for the LOO CV refits. Defaults to
+                          n_estimators (identical to primary model). Setting
+                          to a smaller value (e.g. 5) trades ~1-2% of T-fit
+                          precision for 3x wall-time reduction. T is a
+                          1-parameter fit — doesn't need ensemble precision.
+      val_cap_per_type:   max val races per track type. Keeps the MOST RECENT
+                          races per type. Defaults to None (all val races).
+                          A cap of ~30 per type is 5-10x oversampled for a
+                          1-parameter fit and cuts wall time proportionally.
 
     Returns everything the caller needs to compute matchup probs and top-N.
     """
@@ -72,13 +86,26 @@ def calibrate_and_sample(
         print(f"WARNING: val pool has only {len(val_ids)} races "
               f"(of {len(race_order)}); calibration may default.")
 
+    # ---- Optional per-track-type val cap: keep the MOST RECENT races per type ----
+    if val_cap_per_type is not None and val_ids:
+        tt_by_rid = train.groupby("race_id_short")["track_type"].first().to_dict()
+        per_type: dict[str, list] = {}
+        for rid in val_ids:
+            per_type.setdefault(tt_by_rid.get(rid), []).append(rid)
+        keep = set()
+        for _tt_key, rids in per_type.items():
+            keep.update(rids[-val_cap_per_type:])
+        val_ids = [rid for rid in val_ids if rid in keep]
+
+    cv_ne = cv_n_estimators if cv_n_estimators is not None else n_estimators
+
     # ---- Honest CV: refit ensemble WITHOUT each val race, score that race ----
     val_races, tt_list = [], []
     for rid in val_ids:
         sub = train[train["race_id_short"] == rid]
         train_minus = train[train["race_id_short"] != rid]
         m_cv = GBMEnsemble()
-        m_cv.fit(train_minus, n_estimators=n_estimators, **tight_reg)
+        m_cv.fit(train_minus, n_estimators=cv_ne, **tight_reg)
         raw = m_cv.predict_scores(sub)
         gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
         pl_z = ((sub["pl_effective"].to_numpy() - sub["pl_effective"].mean())
@@ -118,11 +145,13 @@ def calibrate_and_sample(
             if dnf_dispersion_by_type else 0.0)
     dam = (per_driver_damage_hazards_fn(target, track_type)
            if per_driver_damage_hazards_fn is not None else None)
+    dam_pen = (damage_penalty_by_type.get(track_type, damage_penalty)
+               if damage_penalty_by_type else damage_penalty)
     positions = dist.sample_finishing_orders(
         blended / T_effective, haz, n_samples=n_samples, rng=rng,
         dnf_dispersion=disp,
         damage_hazards=dam,
-        damage_penalty=damage_penalty,
+        damage_penalty=dam_pen,
     )
     matchup_mtx = dist.matchup_probs(positions)
 
