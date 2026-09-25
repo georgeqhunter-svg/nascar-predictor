@@ -105,7 +105,8 @@ FEATURES: list[str] = [
     # New signals (2026-09-24) — see src/features/new_signals.py.
     "exp_finish_from_start", "start_stickiness_at_type",
     "green_pace_pct_5", "green_pace_pct_10",
-    "cc_races_together", "cc_avg_finish_10",
+    # `cc_races_together` removed 2026-09-24 — rank ~92/111 by gain, no Δ benefit.
+    "cc_avg_finish_10",
 ]
 
 # `track_type` categorical (gain 0.0) removed 2026-09-24 — GBM never split
