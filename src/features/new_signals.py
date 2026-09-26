@@ -253,12 +253,84 @@ def compute_crew_chief(entries: pd.DataFrame, races: pd.DataFrame) -> pd.DataFra
     return pd.DataFrame(rows).drop_duplicates(["race_id_short", "driver"])
 
 
+# ----------------------------------------------------------------------------
+# 4. Similar-track form (added 2026-09-25)
+# ----------------------------------------------------------------------------
+SIM_LEN_TOL = 0.25     # miles
+SIM_BANK_TOL = 6.0     # degrees
+SIM_WINDOW = 10
+SIM_MIN_RACES = 3
+
+
+def _similar_track_map() -> dict[str, set[str]]:
+    """track display key -> set of physically similar track keys (incl. itself).
+
+    Similar = same track_type AND length within SIM_LEN_TOL AND banking within
+    SIM_BANK_TOL. Road/street courses (no banking) match any road course.
+    Defined from geometry only — no race outcomes involved.
+    """
+    from .tracks import TRACKS
+    info = {slug.replace("_", " ").lower(): t for slug, t in TRACKS.items()}
+    sim: dict[str, set[str]] = {}
+    for k, t in info.items():
+        s = set()
+        for k2, t2 in info.items():
+            if t2.track_type != t.track_type:
+                continue
+            if t.banking_deg is None or t2.banking_deg is None:
+                if t.banking_deg is None and t2.banking_deg is None:
+                    s.add(k2)
+                continue
+            if (abs(t.length_mi - t2.length_mi) <= SIM_LEN_TOL
+                    and abs(t.banking_deg - t2.banking_deg) <= SIM_BANK_TOL):
+                s.add(k2)
+        s.add(k)
+        sim[k] = s
+    return sim
+
+
+def compute_similar_track_form(entries: pd.DataFrame, races: pd.DataFrame) -> pd.DataFrame:
+    """similar_track_avg_finish_10 — driver's mean finish over their last 10
+    races at physically similar tracks (see _similar_track_map), strictly prior.
+    NaN if fewer than SIM_MIN_RACES such races."""
+    sim = _similar_track_map()
+    r = races[["race_id_short", "date"]].copy()
+    r["tkey"] = races["track_name"].astype(str).str.lower() if "track_name" in races else ""
+    r["date"] = pd.to_datetime(r["date"])
+    r = r.sort_values("date")
+
+    e = entries[["race_id_short", "driver", "finish_pos"]].copy()
+    e["finish_pos"] = pd.to_numeric(e["finish_pos"], errors="coerce")
+    by_race = {rid: g for rid, g in e.groupby("race_id_short")}
+
+    hist: dict[str, deque] = defaultdict(lambda: deque(maxlen=120))
+    rows = []
+    for row in r.itertuples(index=False):
+        g = by_race.get(row.race_id_short)
+        if g is None:
+            continue
+        similar = sim.get(row.tkey, {row.tkey})
+        for d in g.itertuples(index=False):
+            matches = [f for tk, f in hist[d.driver] if tk in similar][-SIM_WINDOW:]
+            rows.append({
+                "race_id_short": row.race_id_short, "driver": d.driver,
+                "similar_track_avg_finish_10": (
+                    float(np.mean(matches)) if len(matches) >= SIM_MIN_RACES else np.nan),
+            })
+        for d in g.itertuples(index=False):
+            if np.isfinite(d.finish_pos) and d.finish_pos > 0:
+                hist[d.driver].append((row.tkey, float(d.finish_pos)))
+    return pd.DataFrame(rows).drop_duplicates(["race_id_short", "driver"])
+
+
 def compute_new_signals(entries: pd.DataFrame, races: pd.DataFrame,
                         laptimes: pd.DataFrame | None) -> pd.DataFrame:
-    """Merge all three groups into one frame keyed by (race_id_short, driver)."""
+    """Merge all groups into one frame keyed by (race_id_short, driver)."""
     a = compute_start_expectation(entries, races)
     b = compute_green_pace(laptimes, entries, races)
     c = compute_crew_chief(entries, races)
+    d = compute_similar_track_form(entries, races)
     out = a.merge(b, on=["race_id_short", "driver"], how="outer")
     out = out.merge(c, on=["race_id_short", "driver"], how="outer")
+    out = out.merge(d, on=["race_id_short", "driver"], how="outer")
     return out.drop_duplicates(["race_id_short", "driver"])

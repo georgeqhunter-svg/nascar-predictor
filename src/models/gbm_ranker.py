@@ -89,6 +89,7 @@ FEATURES: list[str] = [
     # `has_practice_data` (gain 0.1) removed — dead flag.
     "practice_best_speed_z", "practice_5lap_avg_z", "practice_10lap_avg_z",
     "practice_consistency_z", "practice_laps_run_z",
+    # `practice_longrun_gap` tested 2026-09-25, reverted — no Δ gain (5-bp rule).
     # Expanded manufacturer × track-type interactions.
     # `drv_manuf_type_races_10` (gain 6.5) removed — sample-count only.
     "manuf_avg_finish_at_type_5_v2", "manuf_avg_finish_at_type_10_v2",
@@ -107,6 +108,8 @@ FEATURES: list[str] = [
     "green_pace_pct_5", "green_pace_pct_10",
     # `cc_races_together` removed 2026-09-24 — rank ~92/111 by gain, no Δ benefit.
     "cc_avg_finish_10",
+    # `similar_track_avg_finish_10` tested 2026-09-25, reverted — Δ +0.0282 ->
+    # +0.0293; hurt Darlington (geometry-similar != race-similar).
 ]
 
 # `track_type` categorical (gain 0.0) removed 2026-09-24 — GBM never split

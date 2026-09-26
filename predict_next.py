@@ -29,9 +29,9 @@ from backtest_oddslogic_v5 import (
 from src.models.predict_pipeline import calibrate_and_sample
 
 
-# Bristol Motor Speedway — Bass Pro Shops Night Race (playoff, first round cutoff).
-TARGET_NAME = "Bass Pro Shops"
-TARGET_DATE = "2026-09-19"
+# Kansas Speedway — Hollywood Casino 400 (2026-09-27).
+TARGET_NAME = "Hollywood Casino 400"
+TARGET_DATE = "2026-09-27"
 
 
 def main():

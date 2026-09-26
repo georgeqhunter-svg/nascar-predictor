@@ -46,6 +46,10 @@ TRACKS: dict[str, Track] = {
         Track("Darlington_Raceway", "Darlington", 1.366, "oval", 25.0, "intermediate", 34.294, -79.906),
         Track("Nashville_Superspeedway", "Nashville", 1.333, "oval", 14.0, "intermediate", 36.017, -86.408),
         Track("World_Wide_Technology_Raceway_at_Gateway", "Gateway", 1.250, "oval", 11.0, "intermediate", 38.652, -90.135),
+        # Alias: races.parquet names this track "World Wide Technology Raceway"
+        # (no "at Gateway"), so name-matching missed it and Gateway races got
+        # NaN length/banking. Same physical track.
+        Track("World_Wide_Technology_Raceway", "Gateway", 1.250, "oval", 11.0, "intermediate", 38.652, -90.135),
 
         Track("Martinsville_Speedway", "Martinsville", 0.526, "oval", 12.0, "short", 36.634, -79.851),
         Track("Bristol_Motor_Speedway", "Bristol", 0.533, "oval", 30.0, "short", 36.516, -82.257),

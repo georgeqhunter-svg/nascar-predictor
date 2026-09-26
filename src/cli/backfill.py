@@ -113,10 +113,34 @@ def backfill(seasons: Iterable[int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     sessions = pd.concat(session_rows, ignore_index=True) if session_rows else pd.DataFrame()
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
+
+    # MERGE, don't overwrite. Previously `--seasons 2026` replaced the files with
+    # 2026-only data and silently wiped 2022-2025 history (happened 2026-09-25).
+    # Now: rows for races fetched in THIS run replace their old rows; every
+    # other race already on disk is kept.
+    def _merge(new: pd.DataFrame, fname: str) -> pd.DataFrame:
+        path = PROCESSED / fname
+        if new.empty or "race_id_short" not in new.columns:
+            return pd.read_parquet(path) if path.exists() else new
+        if not path.exists():
+            return new
+        old = pd.read_parquet(path)
+        keep = old[~old["race_id_short"].isin(set(new["race_id_short"]))]
+        return pd.concat([keep, new], ignore_index=True)
+
+    races = _merge(races, "races.parquet")
+    entries = _merge(entries, "entries.parquet")
+    sessions = _merge(sessions, "sessions.parquet")
+    if "date" in races.columns:
+        races = races.sort_values("date").reset_index(drop=True)
+
     races.to_parquet(PROCESSED / "races.parquet", index=False)
     entries.to_parquet(PROCESSED / "entries.parquet", index=False)
     sessions.to_parquet(PROCESSED / "sessions.parquet", index=False)
-    log.info("Wrote %s races, %s entries, %s session rows", len(races), len(entries), len(sessions))
+    log.info("Wrote %s races, %s entries, %s session rows (merged with existing)",
+             len(races), len(entries), len(sessions))
+    if "season" in races.columns:
+        log.info("Seasons on disk: %s", races["season"].value_counts().sort_index().to_dict())
     return races, entries, sessions
 
 

@@ -18,9 +18,9 @@ from backtest_oddslogic_v5 import (
 from src.models.predict_pipeline import calibrate_and_sample
 
 
-# Bristol Motor Speedway — Bass Pro Shops Night Race (playoff, first round cutoff).
-TARGET_NAME = "Bass Pro Shops"
-TARGET_DATE = "2026-09-19"
+# Kansas Speedway — Hollywood Casino 400 (2026-09-27).
+TARGET_NAME = "Hollywood Casino 400"
+TARGET_DATE = "2026-09-27"
 
 
 # Circa Sports matchups for Bristol Bass Pro Shops Night Race (2026-09-19).
@@ -29,43 +29,7 @@ TARGET_DATE = "2026-09-19"
 # so Circa edges going through it are honest.
 # Format: (driver_a, driver_b, odds_a, odds_b)
 MATCHUPS: list[tuple[str, str, int, int]] = [
-    # Larson group
-    ("Kyle Larson",       "Denny Hamlin",       -140,  120),
-    ("Kyle Larson",       "Ryan Blaney",        -190,  165),
-    ("Kyle Larson",       "Christopher Bell",   -180,  155),
-    ("Kyle Larson",       "Ty Gibbs",           -145,  125),
-    # Hamlin group
-    ("Denny Hamlin",      "Ryan Blaney",        -170,  150),
-    ("Denny Hamlin",      "Christopher Bell",   -155,  135),
-    ("Denny Hamlin",      "Ty Gibbs",           -130,  110),
-    # Blaney / Bell / Gibbs cross
-    ("Ryan Blaney",       "Christopher Bell",    100, -120),
-    ("Ryan Blaney",       "Ty Gibbs",            130, -150),
-    ("Christopher Bell",  "Ty Gibbs",            120, -140),
-    # Byron / Briscoe / Logano / Reddick / Elliott
-    ("William Byron",     "Chase Briscoe",      -110, -110),
-    ("William Byron",     "Joey Logano",         130, -150),
-    ("William Byron",     "Tyler Reddick",      -135,  115),
-    ("William Byron",     "Chase Elliott",      -165,  145),
-    ("Chase Briscoe",     "Joey Logano",         105, -125),
-    ("Chase Briscoe",     "Tyler Reddick",      -140,  120),
-    ("Chase Briscoe",     "Chase Elliott",      -180,  155),
-    ("Joey Logano",       "Tyler Reddick",      -160,  140),
-    ("Joey Logano",       "Chase Elliott",      -190,  165),
-    ("Tyler Reddick",     "Chase Elliott",      -140,  120),
-    # Buescher group
-    ("Chris Buescher",    "Carson Hocevar",      180, -210),
-    ("Chris Buescher",    "Brad Keselowski",     150, -170),
-    ("Chris Buescher",    "Ross Chastain",      -110, -110),
-    ("Chris Buescher",    "Bubba Wallace",       120, -140),
-    # Hocevar group (fade candidates per driver-bias diag)
-    ("Carson Hocevar",    "Brad Keselowski",    -165,  145),
-    ("Carson Hocevar",    "Ross Chastain",      -195,  170),
-    ("Carson Hocevar",    "Bubba Wallace",      -165,  145),
-    # Keselowski / Chastain / Wallace cross
-    ("Brad Keselowski",   "Ross Chastain",      -140,  120),
-    ("Brad Keselowski",   "Bubba Wallace",      -125,  105),
-    ("Ross Chastain",     "Bubba Wallace",       120, -140),
+    # Paste Kansas matchups here once posted: (driver_a, driver_b, odds_a, odds_b)
 ]
 
 

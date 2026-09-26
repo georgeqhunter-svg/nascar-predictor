@@ -383,6 +383,14 @@ def build_features(
                 "practice_10lap_avg_z": pr["practice_10lap_avg_z"] if pr is not None else 0.0,
                 "practice_consistency_z": pr["practice_consistency_z"] if pr is not None else 0.0,
                 "practice_laps_run_z": pr["practice_laps_run_z"] if pr is not None else 0.0,
+                # Long-run minus single-lap practice speed (z units). + = car is
+                # relatively better over a run. NaN (not 0) when no LapRaptor
+                # practice data, so LightGBM routes "missing" separately from
+                # "no gap". See diag_longrun_gap.py (t=-2.08, small effect).
+                "practice_longrun_gap": (
+                    pr["practice_10lap_avg_z"] - pr["practice_best_speed_z"]
+                    if pr is not None else np.nan
+                ),
                 "has_practice_data": int(pr["has_practice_data"]) if pr is not None else 0,
                 "finish_pos": finishes[i],
                 "is_dnf": is_dnf_arr[i],
