@@ -65,8 +65,10 @@ SHRINK_N = 30  # pseudo-observations toward the type mean for thin buckets
 def _bucket(sp: float) -> int | None:
     if not np.isfinite(sp) or sp <= 0:
         return None
+    # Upper-bound match so fractional pseudo-grid starts (formula_grid.py)
+    # land in a bucket; identical to lo<=sp<=hi for integer starts.
     for i, (lo, hi) in enumerate(START_BUCKETS):
-        if lo <= sp <= hi:
+        if sp <= hi:
             return i
     return None
 

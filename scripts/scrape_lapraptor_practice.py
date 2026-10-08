@@ -95,9 +95,28 @@ def main():
     ap.add_argument("--end", type=int, help="end race_id (inclusive)")
     ap.add_argument("--race-ids", type=str,
                     help="comma-separated race_ids (overrides start/end)")
+    ap.add_argument("--missing", action="store_true",
+                    help="every Cup points race in races.parquet with no practice log yet")
+    ap.add_argument("--run-ids", type=str, default=None,
+                    help="run_id range to probe, e.g. 1-24 (default 6-17). Older races "
+                         "number sessions differently. Only 'Practice' runs are used "
+                         "downstream (practice_pace.py filters by run_name).")
     args = ap.parse_args()
 
-    if args.race_ids:
+    global CANDIDATE_RUN_IDS
+    if args.run_ids:
+        lo, hi = (int(x) for x in args.run_ids.split("-"))
+        CANDIDATE_RUN_IDS = list(range(lo, hi + 1))
+
+    if args.missing:
+        import pandas as pd
+        races = pd.read_parquet("data/processed/races.parquet")
+        have = {int(p.name.split("_")[0]) for p in OUT_DIR.glob("*_*.csv")}
+        race_ids = sorted(int(r) for r in races["race_id_nascar"].dropna().unique()
+                          if int(r) not in have)
+        print(f"{len(race_ids)} Cup races with no practice log yet; "
+              f"probing run_ids {CANDIDATE_RUN_IDS[0]}-{CANDIDATE_RUN_IDS[-1]}")
+    elif args.race_ids:
         race_ids = [int(x) for x in args.race_ids.split(",")]
     elif args.start and args.end:
         race_ids = list(range(args.start, args.end + 1))

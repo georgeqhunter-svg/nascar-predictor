@@ -29,8 +29,41 @@ TARGET_DATE = "2026-09-27"
 # so Circa edges going through it are honest.
 # Format: (driver_a, driver_b, odds_a, odds_b)
 MATCHUPS: list[tuple[str, str, int, int]] = [
-    # Paste Kansas matchups here once posted: (driver_a, driver_b, odds_a, odds_b)
+    # Kansas 2026-09-27 — Circa: (driver_a, driver_b, odds_a, odds_b)
+    ("Kyle Larson", "Denny Hamlin", -115, -115),
+    ("Kyle Larson", "Christopher Bell", -140, 110),
+    ("Kyle Larson", "Tyler Reddick", -160, 130),
+    ("Kyle Larson", "Ryan Blaney", -260, 210),
+    ("Denny Hamlin", "Christopher Bell", -140, 110),
+    ("Denny Hamlin", "Tyler Reddick", -160, 130),
+    ("Denny Hamlin", "Ryan Blaney", -250, 200),
+    ("Christopher Bell", "Tyler Reddick", -140, 110),
+    ("Christopher Bell", "Ryan Blaney", -220, 180),
+    ("Tyler Reddick", "Ryan Blaney", -200, 165),
+    ("Ty Gibbs", "Chase Briscoe", -130, 100),
+    ("Ty Gibbs", "Bubba Wallace", -130, 100),
+    ("Ty Gibbs", "Joey Logano", -150, 120),
+    ("Ty Gibbs", "William Byron", -130, 100),
+    ("Chase Briscoe", "William Byron", -120, -110),
+    ("Chase Briscoe", "Bubba Wallace", -120, -110),
+    ("Chase Briscoe", "Joey Logano", -130, 100),
+    ("William Byron", "Bubba Wallace", -115, -115),
+    ("William Byron", "Joey Logano", -120, -110),
+    ("Bubba Wallace", "Joey Logano", -120, -110),
+    ("Chase Elliott", "Chris Buescher", -185, 150),
+    ("Chase Elliott", "Carson Hocevar", -110, -120),
+    ("Chase Elliott", "Brad Keselowski", -190, 155),
+    ("Chase Elliott", "Ross Chastain", -240, 195),
+    ("Chris Buescher", "Carson Hocevar", 150, -185),
+    ("Chris Buescher", "Brad Keselowski", -160, 130),
+    ("Chris Buescher", "Ross Chastain", -170, 140),
+    ("Carson Hocevar", "Brad Keselowski", -200, 165),
+    ("Carson Hocevar", "Ross Chastain", -230, 185),
+    ("Brad Keselowski", "Ross Chastain", -160, 130),
 ]
+
+# Frozen betting rule (set before Kansas lines): edge >= 20%, flat small stakes.
+EDGE_THRESHOLD = 0.20
 
 
 def american_to_decimal(odds: int) -> float:
@@ -138,19 +171,20 @@ def main():
     print(df.to_string(index=False, formatters=fmt))
 
     print("\n" + "=" * 90)
-    print("BETS TO TAKE (edge >= 30% — backtest-validated threshold)")
+    pct = int(EDGE_THRESHOLD * 100)
+    print(f"BETS TO TAKE (edge >= {pct}% — frozen rule)")
     print("=" * 90)
-    plus = df[df["edge"] >= 0.30]
+    plus = df[df["edge"] >= EDGE_THRESHOLD]
     if len(plus) > 0:
         print(plus.to_string(index=False, formatters=fmt))
-        print(f"\n{len(plus)} bets with >=30% edge, mean EV = ${plus['ev_per_dollar'].mean():.4f}/$")
+        print(f"\n{len(plus)} bets with >={pct}% edge, mean EV = ${plus['ev_per_dollar'].mean():.4f}/$")
     else:
-        print("No matchups clear the 30% edge threshold.")
+        print(f"No matchups clear the {pct}% edge threshold.")
 
     print("\n" + "=" * 90)
-    print("Marginal (10-30% edge — do NOT bet these; shown for context)")
+    print(f"Marginal (10-{pct}% edge — do NOT bet these; shown for context)")
     print("=" * 90)
-    mid = df[(df["edge"] >= 0.10) & (df["edge"] < 0.30)]
+    mid = df[(df["edge"] >= 0.10) & (df["edge"] < EDGE_THRESHOLD)]
     if len(mid) > 0:
         print(mid.to_string(index=False, formatters=fmt))
 

@@ -1,0 +1,40 @@
+# Circa Sports (Illinois) lines for South Point 400 (Las Vegas, 2026-10-04).
+# Captured 1:48-1:52 PM CT race day (race 4:40 PM) — near-close, not closing.
+# Format: Driver A, Driver B, oddsA, oddsB.  "EV" entered as +100.
+# Note: Circa header for 6053/6054 reads WALLACE/CHASTAIN but the listed
+# drivers are Wallace/Buescher — entered as listed. 6055/6056 not captured.
+
+# Larson / Hamlin / Bell / Briscoe / Reddick group
+Kyle Larson,       Denny Hamlin,       105, -125
+Kyle Larson,       Christopher Bell,  -135,  115
+Kyle Larson,       Chase Briscoe,     -170,  150
+Kyle Larson,       Tyler Reddick,     -110, -110
+Denny Hamlin,      Christopher Bell,  -145,  125
+Denny Hamlin,      Chase Briscoe,     -210,  180
+Denny Hamlin,      Tyler Reddick,     -155,  135
+Christopher Bell,  Chase Briscoe,     -160,  140
+Christopher Bell,  Tyler Reddick,     -110, -110
+Chase Briscoe,     Tyler Reddick,      115, -135
+
+# Byron / Blaney / Gibbs / Logano / Hocevar group
+William Byron,     Ryan Blaney,       -150,  130
+William Byron,     Ty Gibbs,          -120,  100
+William Byron,     Joey Logano,       -220,  190
+William Byron,     Carson Hocevar,    -155,  135
+Ryan Blaney,       Ty Gibbs,           150, -170
+Ryan Blaney,       Joey Logano,       -165,  145
+Ryan Blaney,       Carson Hocevar,    -110, -110
+Ty Gibbs,          Joey Logano,       -240,  205
+Ty Gibbs,          Carson Hocevar,    -195,  170
+Joey Logano,       Carson Hocevar,     135, -155
+
+# Elliott / Wallace / Cindric / Chastain / Buescher group
+Chase Elliott,     Bubba Wallace,     -120,  100
+Chase Elliott,     Austin Cindric,    -115, -105
+Chase Elliott,     Ross Chastain,     -160,  140
+Chase Elliott,     Chris Buescher,    -155,  135
+Bubba Wallace,     Austin Cindric,    -120,  100
+Bubba Wallace,     Ross Chastain,     -150,  130
+Bubba Wallace,     Chris Buescher,    -150,  130
+Austin Cindric,    Chris Buescher,    -140,  120
+Ross Chastain,     Chris Buescher,    -120,  100

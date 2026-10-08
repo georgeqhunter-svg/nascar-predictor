@@ -995,6 +995,73 @@ BRISTOL_NIGHT_2026 = [
     ("Ross Chastain",     "Bubba Wallace",       120, -140),
 ]
 
+# Kansas — Hollywood Casino 400 (2026-09-27). Circa. RAINOUT (formula grid).
+KANSAS_FALL_2026 = [
+    ("Kyle Larson",       "Denny Hamlin",         -115,  -115),
+    ("Kyle Larson",       "Christopher Bell",     -140,   110),
+    ("Kyle Larson",       "Tyler Reddick",        -160,   130),
+    ("Kyle Larson",       "Ryan Blaney",          -260,   210),
+    ("Denny Hamlin",      "Christopher Bell",     -140,   110),
+    ("Denny Hamlin",      "Tyler Reddick",        -160,   130),
+    ("Denny Hamlin",      "Ryan Blaney",          -250,   200),
+    ("Christopher Bell",  "Tyler Reddick",        -140,   110),
+    ("Christopher Bell",  "Ryan Blaney",          -220,   180),
+    ("Tyler Reddick",     "Ryan Blaney",          -200,   165),
+    ("Ty Gibbs",          "Chase Briscoe",        -130,   100),
+    ("Ty Gibbs",          "Bubba Wallace",        -130,   100),
+    ("Ty Gibbs",          "Joey Logano",          -150,   120),
+    ("Ty Gibbs",          "William Byron",        -130,   100),
+    ("Chase Briscoe",     "William Byron",        -120,  -110),
+    ("Chase Briscoe",     "Bubba Wallace",        -120,  -110),
+    ("Chase Briscoe",     "Joey Logano",          -130,   100),
+    ("William Byron",     "Bubba Wallace",        -115,  -115),
+    ("William Byron",     "Joey Logano",          -120,  -110),
+    ("Bubba Wallace",     "Joey Logano",          -120,  -110),
+    ("Chase Elliott",     "Chris Buescher",       -185,   150),
+    ("Chase Elliott",     "Carson Hocevar",       -110,  -120),
+    ("Chase Elliott",     "Brad Keselowski",      -190,   155),
+    ("Chase Elliott",     "Ross Chastain",        -240,   195),
+    ("Chris Buescher",    "Carson Hocevar",        150,  -185),
+    ("Chris Buescher",    "Brad Keselowski",      -160,   130),
+    ("Chris Buescher",    "Ross Chastain",        -170,   140),
+    ("Carson Hocevar",    "Brad Keselowski",      -200,   165),
+    ("Carson Hocevar",    "Ross Chastain",        -230,   185),
+    ("Brad Keselowski",   "Ross Chastain",        -160,   130),
+]
+
+# Las Vegas — South Point 400 (2026-10-04). Circa IL, ~3h pre-race (near-close).
+VEGAS_FALL_2026 = [
+    ("Kyle Larson",       "Denny Hamlin",          105,  -125),
+    ("Kyle Larson",       "Christopher Bell",     -135,   115),
+    ("Kyle Larson",       "Chase Briscoe",        -170,   150),
+    ("Kyle Larson",       "Tyler Reddick",        -110,  -110),
+    ("Denny Hamlin",      "Christopher Bell",     -145,   125),
+    ("Denny Hamlin",      "Chase Briscoe",        -210,   180),
+    ("Denny Hamlin",      "Tyler Reddick",        -155,   135),
+    ("Christopher Bell",  "Chase Briscoe",        -160,   140),
+    ("Christopher Bell",  "Tyler Reddick",        -110,  -110),
+    ("Chase Briscoe",     "Tyler Reddick",         115,  -135),
+    ("William Byron",     "Ryan Blaney",          -150,   130),
+    ("William Byron",     "Ty Gibbs",             -120,   100),
+    ("William Byron",     "Joey Logano",          -220,   190),
+    ("William Byron",     "Carson Hocevar",       -155,   135),
+    ("Ryan Blaney",       "Ty Gibbs",              150,  -170),
+    ("Ryan Blaney",       "Joey Logano",          -165,   145),
+    ("Ryan Blaney",       "Carson Hocevar",       -110,  -110),
+    ("Ty Gibbs",          "Joey Logano",          -240,   205),
+    ("Ty Gibbs",          "Carson Hocevar",       -195,   170),
+    ("Joey Logano",       "Carson Hocevar",        135,  -155),
+    ("Chase Elliott",     "Bubba Wallace",        -120,   100),
+    ("Chase Elliott",     "Austin Cindric",       -115,  -105),
+    ("Chase Elliott",     "Ross Chastain",        -160,   140),
+    ("Chase Elliott",     "Chris Buescher",       -155,   135),
+    ("Bubba Wallace",     "Austin Cindric",       -120,   100),
+    ("Bubba Wallace",     "Ross Chastain",        -150,   130),
+    ("Bubba Wallace",     "Chris Buescher",       -150,   130),
+    ("Austin Cindric",    "Chris Buescher",       -140,   120),
+    ("Ross Chastain",     "Chris Buescher",       -120,   100),
+]
+
 RACES = [
     ("2026-02-22", "Autotrader 400",   ATLANTA_SPRING_2026),
     ("2026-03-01", "Duramax Grand Prix", COTA),
@@ -1021,6 +1088,8 @@ RACES = [
     ("2026-09-06", "Southern 500",     DARLINGTON),
     ("2026-09-13", "Enjoy Illinois",   ILLINOIS_2026),
     ("2026-09-19", "Bass Pro Shops",   BRISTOL_NIGHT_2026),
+    ("2026-09-27", "Hollywood Casino", KANSAS_FALL_2026),
+    ("2026-10-04", "South Point",      VEGAS_FALL_2026),
 ]
 
 TIGHT_REG = {"num_leaves": 31, "min_data_in_leaf": 25, "lambda_l2": 2.0}
@@ -1086,6 +1155,29 @@ HAZARD_SHRINK_K = 5.0
 CV_N_ESTIMATORS = 5
 VAL_CAP_PER_TYPE = 30
 
+# Re-run the leave-one-race-out calibration only every N backtest races and
+# reuse it in between (~97% of runtime). 1 = recalibrate every race (old,
+# ~10-11 h). 9 = 3 calibrations per 27-race run.
+CAL_REFRESH_EVERY = 9
+_CAL_CACHE = None
+_CAL_AGE = 0
+
+# Track-level hazard baselines within type (src/features/track_profile.py).
+# When on, DNF + damage baselines come from THIS track's walk-forward history
+# (shrunk to the type mean) instead of one constant per track type, and
+# driver type-level DNF/crash rates are scaled by track/type ratio.
+# Tested 2026-10-03: Δ +0.0287 -> +0.0292 (wash/slightly worse). Lower-hazard
+# tracks helped (Vegas, Atlanta), higher-hazard ones hurt (Charlotte +1.1 bps).
+TRACK_HAZARD_ENABLED = False
+
+
+def _track_col(df, col: str) -> float:
+    """Field-constant track-profile value for a race (NaN if absent)."""
+    if col not in getattr(df, "columns", []):
+        return float("nan")
+    v = pd.to_numeric(df[col], errors="coerce").dropna()
+    return float(v.iloc[0]) if len(v) else float("nan")
+
 
 def per_driver_hazards(target_df, track_type: str) -> np.ndarray:
     """Blend track-type baseline with driver-specific hazard rates.
@@ -1099,6 +1191,12 @@ def per_driver_hazards(target_df, track_type: str) -> np.ndarray:
     baseline (~half of typical DNFs are crashes).
     """
     base = HAZARD.get(track_type, 0.08)
+    track_ratio = 1.0
+    if TRACK_HAZARD_ENABLED:
+        tb, yb = _track_col(target_df, "track_dnf_base"), _track_col(target_df, "type_dnf_base")
+        if np.isfinite(tb) and np.isfinite(yb) and yb > 0:
+            track_ratio = tb / yb          # e.g. Kansas 0.105/0.143 = 0.73
+            base = tb
     n = target_df.get("n_races_at_type_for_variance",
                       target_df.get("races_at_type_last_10", 0))
     if hasattr(n, "to_numpy"):
@@ -1111,7 +1209,9 @@ def per_driver_hazards(target_df, track_type: str) -> np.ndarray:
     # Primary driver rate: empirical DNF rate at this track type.
     if dnf is not None:
         d = np.asarray(dnf, dtype=float)
-        driver_rate = np.where(np.isnan(d), base, d)
+        # Driver rates are measured across the whole TYPE; scale them to this
+        # track (a driver's Kansas risk is lower than their intermediate avg).
+        driver_rate = np.where(np.isnan(d), base, d * track_ratio)
     else:
         driver_rate = np.full(len(target_df), base)
 
@@ -1120,7 +1220,7 @@ def per_driver_hazards(target_df, track_type: str) -> np.ndarray:
     # baseline crash rate ~ 0.5 * base. A driver with 2x that gets a hazard
     # bump of the excess.
     if crash is not None:
-        c = np.asarray(crash, dtype=float)
+        c = np.asarray(crash, dtype=float) * track_ratio
         crash_baseline = 0.5 * base
         bump = np.where(
             np.isnan(c), 0.0,
@@ -1148,6 +1248,10 @@ def per_driver_damage_hazards(
     base = DAMAGE_HAZARD.get(track_type)
     if base is None:
         return None
+    if TRACK_HAZARD_ENABLED:
+        tb = _track_col(target_df, "track_damage_base")
+        if np.isfinite(tb):
+            base = tb
     return np.full(len(target_df), float(base))
 
 
@@ -1202,6 +1306,17 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     model = GBMEnsemble()
     model.fit(train, n_estimators=15, **TIGHT_REG)
 
+    # Calibration reuse (speed): the leave-one-race-out CV below is ~97% of
+    # wall time and T barely moves race to race. Reuse the last calibration
+    # for CAL_REFRESH_EVERY consecutive backtest races. Still honest: every
+    # reused calibration was fit only on races before the race it's applied to.
+    global _CAL_CACHE, _CAL_AGE
+    if CAL_REFRESH_EVERY > 1 and _CAL_CACHE is not None and _CAL_AGE < CAL_REFRESH_EVERY:
+        T_by_type, scales = _CAL_CACHE
+        _CAL_AGE += 1
+        return _finish_race(name_match, matchups, target, model, tt, T_by_type, scales,
+                            entries, target_rid)
+
     race_order = train.groupby("race_id_short")["date"].first().sort_values().index.tolist()
     # Guardrail: never calibrate on races this backtest evaluates, and
     # never silently fall back to default temperatures on an empty pool.
@@ -1224,18 +1339,20 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     val_ids = [rid for rid in val_ids if rid in capped]
 
     # --- Honest out-of-sample calibration: refit without each val race ---
-    val_races, tt_list = [], []
+    from src.models.predict_pipeline import blend_scores, fit_blend_scales
+    cv_out = []   # (sub, raw) — global scales need ALL val races first
     for rid in val_ids:
         sub = train[train["race_id_short"] == rid]
         train_minus = train[train["race_id_short"] != rid]
         m_cv = GBMEnsemble()
         m_cv.fit(train_minus, n_estimators=CV_N_ESTIMATORS, **TIGHT_REG)
-        raw = m_cv.predict_scores(sub)
-        gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-        pl_z = ((sub["pl_effective"].to_numpy() - sub["pl_effective"].mean())
-                / (sub["pl_effective"].std() + 1e-9))
-        b = ALPHA * gbm_z + (1 - ALPHA) * pl_z
-        b = b / max(b.std(), 1e-6)
+        cv_out.append((sub, m_cv.predict_scores(sub)))
+    scales = fit_blend_scales(
+        [(raw, sub["pl_effective"].to_numpy()) for sub, raw in cv_out], ALPHA)
+
+    val_races, tt_list = [], []
+    for sub, raw in cv_out:
+        b = blend_scores(raw, sub["pl_effective"].to_numpy(), ALPHA, scales)
         val_races.append(RaceScoresGT(
             scores=b, finishes=sub["finish_pos"].to_numpy(),
             is_dnf=sub["is_dnf"].to_numpy(),
@@ -1246,14 +1363,23 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
         val_races, tt_list, default_T=1.0, n_samples=1500,
         dnf_dispersion_by_type=DNF_DISPERSION,
     )
+    if CAL_REFRESH_EVERY > 1:
+        _CAL_CACHE, _CAL_AGE = (T_by_type, scales), 1
+    return _finish_race(name_match, matchups, target, model, tt, T_by_type, scales,
+                        entries, target_rid)
+
+
+
+def _finish_race(name_match, matchups, target, model, tt, T_by_type, scales,
+                 entries, target_rid):
+    """Score the target race given a fitted model + calibration (split out of
+    run_race so calibration can be reused across races)."""
+    from src.models import distribution as dist
+    from src.models.predict_pipeline import blend_scores
     T = T_by_type.get(tt, 1.0)
 
     raw = model.predict_scores(target)
-    gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-    pl_z = ((target["pl_effective"].to_numpy() - target["pl_effective"].mean())
-            / (target["pl_effective"].std() + 1e-9))
-    blended = ALPHA * gbm_z + (1 - ALPHA) * pl_z
-    blended = blended / max(blended.std(), 1e-6)
+    blended = blend_scores(raw, target["pl_effective"].to_numpy(), ALPHA, scales)
     haz = per_driver_hazards(target, tt)
 
     # Single calibrated temperature — no second layer.
@@ -1339,7 +1465,7 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
 
     mkt_mean = float(np.mean(market_ll)); mdl_mean = float(np.mean(model_ll))
     drop_str = f"  DROPPED={len(dropped_matchups)}" if dropped_matchups else ""
-    print(f"{name_match} ({tt}, T={T}): n={n}  mkt={mkt_mean:.4f}({market_correct}/{n})  "
+    print(f"{name_match} ({tt}, T={T}, spread={blended.std():.2f}): n={n}  mkt={mkt_mean:.4f}({market_correct}/{n})  "
     f"mdl={mdl_mean:.4f}({model_correct}/{n})  Delta={mdl_mean-mkt_mean:+.4f}{drop_str}")
     if dropped_matchups:
         for a, b, reason in dropped_matchups[:5]:

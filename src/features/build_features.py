@@ -41,6 +41,17 @@ from .tracks import TRACKS
 from .weather import compute_weather_features, load_or_fetch_weather
 from .manuf_type import compute_manuf_type
 from .new_signals import compute_new_signals
+from .formula_grid import apply_pseudo_grid
+from .dnf_neutral import DNF_NEUTRAL_FORM, neutralize_dnf_finishes
+from .track_profile import compute_track_profile
+from .missing import apply_missing_as_nan
+from .wear_index import compute_wear_index
+
+# Plackett-Luce ratings learn only from drivers who finished (DNFs excluded,
+# not treated as last place). Queued test after the wear index.
+# ADOPTED 2026-10-08: Δ +0.0285 -> +0.0194; paired -9.1 bp (SE 2.7, t=-3.4),
+# 19/27 races better. Atlanta x2, Charlotte, Phoenix, Vegas biggest gains.
+PL_EXCLUDE_DNF = True
 
 
 def build_features(
@@ -65,22 +76,29 @@ def build_features(
     races = races.sort_values("date").reset_index(drop=True).copy()
     entries = entries.copy()
     entries["date"] = pd.to_datetime(entries["date"])
+    # Rainout grids: swap start_pos for a form-blended pseudo-grid (model input
+    # only; original kept in start_pos_raw). See formula_grid.py.
+    entries = apply_pseudo_grid(entries, races)
 
     # Merge track_id into entries for track-specific driver history.
     if "track_id" in races.columns and "track_id" not in entries.columns:
         entries = entries.merge(
             races[["race_id_short", "track_id"]], on="race_id_short", how="left"
         )
+    # Driver-form features see DNF-neutral finishes (DNF risk lives only in the
+    # hazard layer). Target, PL ratings and hazard inputs keep real finishes.
+    # Must come AFTER the track_id merge (per-track form needs it).
+    form_entries = neutralize_dnf_finishes(entries) if DNF_NEUTRAL_FORM else entries
     # Race-level distance (miles). Falls back to NaN when unavailable.
     race_distance = (
         races.set_index("race_id_short")["scheduled_distance"]
         if "scheduled_distance" in races.columns
         else None
     )
-    rolling = compute_rolling(entries).set_index(["race_id_short", "driver"])
-    h2h = compute_h2h(entries, races).set_index(["race_id_short", "driver"])
-    type_roll = compute_type_rolling(entries, races).set_index(["race_id_short", "driver"])
-    manuf_type_df = compute_manuf_type(entries, races).set_index(["race_id_short", "driver"])
+    rolling = compute_rolling(form_entries).set_index(["race_id_short", "driver"])
+    h2h = compute_h2h(form_entries, races).set_index(["race_id_short", "driver"])
+    type_roll = compute_type_rolling(form_entries, races).set_index(["race_id_short", "driver"])
+    manuf_type_df = compute_manuf_type(form_entries, races).set_index(["race_id_short", "driver"])
     # Weather: load or fetch cache, then compute per-driver rolling features.
     if weather is None:
         try:
@@ -92,13 +110,13 @@ def build_features(
                 "humidity_mean_pct", "precip_sum_in",
             ])
     if not weather.empty:
-        weather_feats = compute_weather_features(entries, races, weather)
+        weather_feats = compute_weather_features(form_entries, races, weather)
         weather_feats = weather_feats.set_index(["race_id_short", "driver"])
     else:
         weather_feats = None
-    variance = compute_driver_variance(entries, races).set_index(["race_id_short", "driver"])
-    race_pace = compute_race_pace(entries, races).set_index(["race_id_short", "driver"])
-    track_roll = compute_track_rolling(entries, races).set_index(["race_id_short", "driver"])
+    variance = compute_driver_variance(form_entries, races).set_index(["race_id_short", "driver"])
+    race_pace = compute_race_pace(form_entries, races).set_index(["race_id_short", "driver"])
+    track_roll = compute_track_rolling(form_entries, races).set_index(["race_id_short", "driver"])
     from pathlib import Path
     lr_prior = compute_lr_prior(
         entries, races, Path("data/raw"),
@@ -436,6 +454,12 @@ def build_features(
         # entries.parquet is clean; this guard prevents future regressions.
         if any(f > 0 for f in finishes):
             keep = [i for i, f in enumerate(finishes) if f > 0]
+            if PL_EXCLUDE_DNF:
+                # DNF drivers sit in the PL denominator at every step and get
+                # pushed down like last place — Blaney (20% DNF, best running
+                # finish in field) rated +0.02 vs Logano +0.68. DNF risk is
+                # already modelled by the sampler's hazard layer.
+                keep = [i for i in keep if not is_dnf_arr[i]]
             pl_drivers = [drivers[i] for i in keep]
             pl_teams = [teams[i] for i in keep]
             pl_is_dnf = [is_dnf_arr[i] for i in keep]
@@ -454,4 +478,15 @@ def build_features(
     n_before = len(out)
     out = out.merge(new_sig, on=["race_id_short", "driver"], how="left")
     assert len(out) == n_before, "new_signals merge duplicated rows"
+    # Track-level profile within type (DNF/damage baselines, track stickiness).
+    prof = compute_track_profile(entries, races)
+    out = out.merge(prof, on=["race_id_short", "driver"], how="left")
+    assert len(out) == n_before, "track_profile merge duplicated rows"
+    # Track surface wear index from long green-run lap-time falloff.
+    wear = compute_wear_index(laptimes, races, entries)
+    if not wear.empty:
+        out = out.merge(wear, on=["race_id_short", "driver"], how="left")
+        assert len(out) == n_before, "wear_index merge duplicated rows"
+    # Missing qual/practice -> NaN (not 0.0 = "average"). See missing.py.
+    out = apply_missing_as_nan(out, qual, practice, practice_depth)
     return out

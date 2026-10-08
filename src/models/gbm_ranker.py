@@ -117,6 +117,40 @@ FEATURES: list[str] = [
 # type-bucketing would.
 CATEGORICAL: list[str] = ["driver", "team", "manufacturer"]
 
+# Track-level passing difficulty within type (src/features/track_profile.py):
+# Spearman(start, finish) at THIS track, shrunk to the type mean. Kansas 0.42
+# vs Texas 0.27 vs Pocono 0.40 — start_stickiness_at_type can't see that.
+# Tested 2026-10-03: Δ +0.0287 -> +0.0282; paired vs prior run -1.0 bp,
+# race-clustered SE 1.2 bp (t=-0.8), 11/25 races better -> noise. Off.
+TRACK_STICKINESS_FEATURE = False
+if TRACK_STICKINESS_FEATURE:
+    FEATURES.append("start_stickiness_at_track")
+
+# Track surface wear (src/features/wear_index.py): field pace loss over long
+# green runs at THIS track, walk-forward. Homestead/Richmond ~4.3%,
+# Darlington 3.8%, Kansas/Vegas 2.7%, Texas/Michigan/Nashville <1%.
+# Lets the GBM pair driver tire skill (tire_decay_type_10) with track wear.
+# Tested 2026-10-07: Δ +0.0285 -> +0.0278; paired -0.75 bp (SE 0.95, t=-0.79),
+# 17/27 races better, but high-wear Darlington got worse. Noise -> off.
+WEAR_INDEX_FEATURE = False
+if WEAR_INDEX_FEATURE:
+    FEATURES.append("track_wear_falloff")
+
+# LambdaRank gain per relevance grade (relevance 0..30, winner = 30).
+#   "default": LightGBM's 2^rel - 1 -> winner pair weighs ~1e9x a P15-vs-P20
+#              pair; model effectively learns only the front of the field.
+#   "linear":  gain = rel -> every position step counts equally, which is what
+#              mid-pack head-to-head matchups need.
+# "linear" tested 2026-10-02, killed after 8/25 races: +0.0051 worse on 340
+# matchups (AdventHealth +3 bps) — couldn't reach the -5 bp acceptance bar.
+LABEL_GAIN_MODE = "default"   # "default" | "linear"
+
+
+def _label_gain_params() -> dict:
+    if LABEL_GAIN_MODE == "linear":
+        return {"label_gain": [float(i) for i in range(31)]}
+    return {}
+
 
 # Frozen category universe: pandas `.astype("category")` infers categories per
 # call, so train and predict end up with different code mappings whenever the
@@ -237,6 +271,7 @@ class GBMEnsemble:
                 "seed": base_seed + k,
                 "bagging_seed": base_seed + k,
                 "feature_fraction_seed": base_seed + k * 7 + 1,
+                **_label_gain_params(),
             }
             if params_override:
                 params.update(params_override)
@@ -288,6 +323,7 @@ class GBMRanker:
             "lambda_l2": lambda_l2,
             "verbosity": -1,
             "seed": random_state,
+            **_label_gain_params(),
         }
         if params_override:
             params.update(params_override)

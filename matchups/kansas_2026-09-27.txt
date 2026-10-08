@@ -1,0 +1,34 @@
+# Circa Sports lines for Hollywood Casino 400 (Kansas, 2026-09-27).
+# Format: Driver A, Driver B, oddsA, oddsB
+# Rainout weekend — grid set by formula.
+
+Kyle Larson,       Denny Hamlin,       -115, -115
+Kyle Larson,       Christopher Bell,   -140,  110
+Kyle Larson,       Tyler Reddick,      -160,  130
+Kyle Larson,       Ryan Blaney,        -260,  210
+Denny Hamlin,      Christopher Bell,   -140,  110
+Denny Hamlin,      Tyler Reddick,      -160,  130
+Denny Hamlin,      Ryan Blaney,        -250,  200
+Christopher Bell,  Tyler Reddick,      -140,  110
+Christopher Bell,  Ryan Blaney,        -220,  180
+Tyler Reddick,     Ryan Blaney,        -200,  165
+Ty Gibbs,          Chase Briscoe,      -130,  100
+Ty Gibbs,          Bubba Wallace,      -130,  100
+Ty Gibbs,          Joey Logano,        -150,  120
+Ty Gibbs,          William Byron,      -130,  100
+Chase Briscoe,     William Byron,      -120, -110
+Chase Briscoe,     Bubba Wallace,      -120, -110
+Chase Briscoe,     Joey Logano,        -130,  100
+William Byron,     Bubba Wallace,      -115, -115
+William Byron,     Joey Logano,        -120, -110
+Bubba Wallace,     Joey Logano,        -120, -110
+Chase Elliott,     Chris Buescher,     -185,  150
+Chase Elliott,     Carson Hocevar,     -110, -120
+Chase Elliott,     Brad Keselowski,    -190,  155
+Chase Elliott,     Ross Chastain,      -240,  195
+Chris Buescher,    Carson Hocevar,      150, -185
+Chris Buescher,    Brad Keselowski,    -160,  130
+Chris Buescher,    Ross Chastain,      -170,  140
+Carson Hocevar,    Brad Keselowski,    -200,  165
+Carson Hocevar,    Ross Chastain,      -230,  185
+Brad Keselowski,   Ross Chastain,      -160,  130

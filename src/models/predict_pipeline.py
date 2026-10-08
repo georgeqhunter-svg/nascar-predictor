@@ -19,6 +19,42 @@ import numpy as np
 import pandas as pd
 
 
+# ---------------------------------------------------------------------------
+# Score spread. "per_race" (old): z-score GBM + PL within each race and rescale
+# the blend to std 1, so EVERY race gets the same confidence — a rainout looks
+# as certain as a full practice/qualifying weekend. "global": centre within the
+# race but divide by constants fit on the out-of-sample CV races (median
+# per-race std), so races where the model's scores are compressed stay
+# compressed. The median race keeps std ~1, so the T grid is unchanged.
+# ---------------------------------------------------------------------------
+SCORE_SPREAD_MODE = "global"   # "global" | "per_race"
+
+
+def fit_blend_scales(pairs: list[tuple[np.ndarray, np.ndarray]], alpha: float) -> dict | None:
+    """pairs = [(gbm_raw, pl_effective), ...] from out-of-sample CV races."""
+    if SCORE_SPREAD_MODE != "global" or not pairs:
+        return None
+    s_g = float(np.median([np.std(r) for r, _ in pairs]))
+    s_p = float(np.median([np.std(p) for _, p in pairs]))
+    s_g, s_p = max(s_g, 1e-6), max(s_p, 1e-6)
+    b_std = [np.std(alpha * (r - r.mean()) / s_g + (1 - alpha) * (p - p.mean()) / s_p)
+             for r, p in pairs]
+    return {"gbm": s_g, "pl": s_p, "blend": max(float(np.median(b_std)), 1e-6)}
+
+
+def blend_scores(raw: np.ndarray, pl: np.ndarray, alpha: float,
+                 scales: dict | None) -> np.ndarray:
+    raw = np.asarray(raw, dtype=float); pl = np.asarray(pl, dtype=float)
+    if scales is None:   # per-race (old behaviour)
+        g = (raw - raw.mean()) / (raw.std() + 1e-9)
+        p = (pl - pl.mean()) / (pl.std() + 1e-9)
+        b = alpha * g + (1 - alpha) * p
+        return b / max(b.std(), 1e-6)
+    g = (raw - raw.mean()) / scales["gbm"]
+    p = (pl - pl.mean()) / scales["pl"]
+    return (alpha * g + (1 - alpha) * p) / scales["blend"]
+
+
 @dataclass
 class SampledRace:
     T: float
@@ -100,18 +136,22 @@ def calibrate_and_sample(
     cv_ne = cv_n_estimators if cv_n_estimators is not None else n_estimators
 
     # ---- Honest CV: refit ensemble WITHOUT each val race, score that race ----
-    val_races, tt_list = [], []
+    cv_out = []   # (sub, raw) — scales need ALL val races before blending
     for rid in val_ids:
         sub = train[train["race_id_short"] == rid]
         train_minus = train[train["race_id_short"] != rid]
         m_cv = GBMEnsemble()
         m_cv.fit(train_minus, n_estimators=cv_ne, **tight_reg)
-        raw = m_cv.predict_scores(sub)
-        gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-        pl_z = ((sub["pl_effective"].to_numpy() - sub["pl_effective"].mean())
-                / (sub["pl_effective"].std() + 1e-9))
-        b = alpha * gbm_z + (1 - alpha) * pl_z
-        b = b / max(b.std(), 1e-6)
+        cv_out.append((sub, m_cv.predict_scores(sub)))
+    scales = fit_blend_scales(
+        [(raw, sub["pl_effective"].to_numpy()) for sub, raw in cv_out], alpha)
+    if verbose and scales:
+        print(f"Score spread: global scales gbm={scales['gbm']:.3f} "
+              f"pl={scales['pl']:.3f} blend={scales['blend']:.3f}")
+
+    val_races, tt_list = [], []
+    for sub, raw in cv_out:
+        b = blend_scores(raw, sub["pl_effective"].to_numpy(), alpha, scales)
         v_tt = sub["track_type"].iloc[0]
         val_races.append(RaceScoresGT(
             scores=b,
@@ -129,11 +169,9 @@ def calibrate_and_sample(
 
     # ---- Score target race ----
     raw = model.predict_scores(target)
-    gbm_z = (raw - raw.mean()) / (raw.std() + 1e-9)
-    pl_z = ((target["pl_effective"].to_numpy() - target["pl_effective"].mean())
-            / (target["pl_effective"].std() + 1e-9))
-    blended = alpha * gbm_z + (1 - alpha) * pl_z
-    blended = blended / max(blended.std(), 1e-6)
+    blended = blend_scores(raw, target["pl_effective"].to_numpy(), alpha, scales)
+    if verbose and scales:
+        print(f"Target race blend std = {blended.std():.3f} (1.0 = median val race)")
     haz = per_driver_hazards_fn(target, track_type)
 
     T_effective = T

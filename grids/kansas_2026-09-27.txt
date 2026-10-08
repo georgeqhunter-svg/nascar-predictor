@@ -1,0 +1,40 @@
+# Kansas Speedway — Hollywood Casino 400 (2026-09-27).
+# Practice + qualifying rained out; grid set by NASCAR formula.
+# Source: NASCAR Statistics starting lineup, 9/26/2026 10:35 AM ET.
+# No speeds -> run patch_grid.py WITHOUT --speeds.
+1, Joey Logano
+2, Kyle Larson
+3, Christopher Bell
+4, Carson Hocevar
+5, Ty Gibbs
+6, Denny Hamlin
+7, Bubba Wallace
+8, William Byron
+9, Ryan Preece
+10, Josh Berry
+11, Austin Cindric
+12, Chris Buescher
+13, Ross Chastain
+14, Daniel Suarez
+15, Tyler Reddick
+16, Brad Keselowski
+17, Shane Van Gisbergen
+18, Chase Elliott
+19, Austin Dillon
+20, Todd Gilliland
+21, Noah Gragson
+22, Michael McDowell
+23, Chase Briscoe
+24, AJ Allmendinger
+25, Ryan Blaney
+26, John Hunter Nemechek
+27, Connor Zilisch
+28, Zane Smith
+29, Cole Custer
+30, Erik Jones
+31, Ricky Stenhouse Jr
+32, Austin Hill
+33, Alex Bowman
+34, Riley Herbst
+35, Cody Ware
+36, Ty Dillon
