@@ -1093,6 +1093,9 @@ RACES = [
 ]
 
 TIGHT_REG = {"num_leaves": 31, "min_data_in_leaf": 25, "lambda_l2": 2.0}
+# GBM weight in the GBM/Plackett-Luce blend. Re-tested 0.70 after the PL DNF
+# fix (2026-10-08, one pre-chosen value): Δ +0.0195 -> +0.0196, big per-race
+# swings both ways, correct picks 559 -> 547. Kept 0.85.
 ALPHA = 0.85
 N_SAMPLES = 30_000
 HAZARD = {"superspeedway": 0.255, "intermediate": 0.142, "short": 0.086,
@@ -1147,7 +1150,14 @@ DAMAGE_PENALTY = 3.0  # legacy fallback — replaced by DAMAGE_PENALTY_BY_TYPE
 # Empirical-Bayes shrinkage constant for per-driver hazard: how many prior
 # same-type races we need to trust the driver-specific rate over the track
 # baseline. Lower = trust driver rate more.
-HAZARD_SHRINK_K = 5.0
+# Was 5.0 -> a driver with 10 races at a type got 67% weight on his own DNF
+# rate. Measured persistence (2023-2025 only, drivers with 8-10 type races):
+# only 8.3% of a driver's DNF-rate deviation carries into the next race ->
+# K = 10*(1-0.083)/0.083 ~= 110. diag_market_vs_model.py: model leans on low
+# DNF rate beyond the market (t=+7.7), outcomes don't reward it (t=+0.5).
+# ADOPTED 2026-10-09: Δ +0.0195 -> +0.0074; paired -12.1 bp (SE 5.5, t=-2.2),
+# 17/27 races better. Excl. both Atlantas: -6.3 bp (t=-1.7), 15/25 better.
+HAZARD_SHRINK_K = 110.0
 
 # CV refit speed knobs. T is a 1-parameter fit; the val races just need to
 # score honestly. Fewer boosters and a per-type val cap cost ~nothing on T

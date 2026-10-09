@@ -52,6 +52,25 @@ from .wear_index import compute_wear_index
 # ADOPTED 2026-10-08: Δ +0.0285 -> +0.0194; paired -9.1 bp (SE 2.7, t=-3.4),
 # 19/27 races better. Atlanta x2, Charlotte, Phoenix, Vegas biggest gains.
 PL_EXCLUDE_DNF = True
+# How DNFs enter the PL update when PL_EXCLUDE_DNF is on:
+#   "exclude" — dropped (adopted baseline, fast-mode Δ +0.0195)
+#   "insert"  — slotted in at their average running position before exiting
+#               (loopstats avg_ps), if they completed >= PL_DNF_MIN_FRAC of laps
+# "insert" tested 2026-10-08: Δ +0.0195 -> +0.0256 (worse); Atlanta lost most
+# of its gain (+0.106 -> +0.131). Keeping "exclude".
+PL_DNF_MODE = "exclude"
+PL_DNF_MIN_FRAC = 0.25
+
+# PL hyperparameters. diag_pl_engine.py (walk-forward next-race likelihood,
+# selected on 2023-2025 ONLY so the 2026 backtest stays untouched):
+#   team term off  +22.4 | lr_driver 0.10 +17.5 | team off + lr 0.07 +37.2
+#   (per-position LL x1000 vs current, better in 77% of 107 races).
+# Team rating sums every teammate's gradient -> a 4-car org moves ~4x a driver
+# and overreacts to one week; lr 0.15 chases the latest race too hard.
+# Tested team-off + lr 0.07 on the backtest 2026-10-08: Δ +0.0195 -> +0.0215
+# (worse) despite the better standalone fit. Kept the defaults.
+# PL_HYPERPARAMS = dict(lr_team=0.0, lr_driver=0.07)
+PL_HYPERPARAMS = {}   # defaults: lr_driver 0.15, lr_team 0.08
 
 
 def build_features(
@@ -173,10 +192,22 @@ def build_features(
         pit_team_rolling = None
         tire_rolling = None
 
+    # DNF running position for PL_DNF_MODE="insert": (race_id_short, driver_id)
+    # -> avg running position, only if the driver completed enough of the race.
+    dnf_ps: dict = {}
+    if PL_DNF_MODE == "insert" and loopstats is not None and not loopstats.empty:
+        lp = loopstats[["race_id_short", "driver_id", "avg_ps", "laps"]].merge(
+            races[["race_id_short", "actual_laps"]], on="race_id_short", how="left")
+        lp = lp[(pd.to_numeric(lp["avg_ps"], errors="coerce") > 0)
+                & (pd.to_numeric(lp["laps"], errors="coerce")
+                   >= PL_DNF_MIN_FRAC * pd.to_numeric(lp["actual_laps"], errors="coerce"))]
+        dnf_ps = {(r_, int(d_)): float(p_) for r_, d_, p_ in
+                  zip(lp["race_id_short"], lp["driver_id"], lp["avg_ps"]) if pd.notna(d_)}
+
     playoff_drivers = derive_playoff_drivers(entries, races)
     elimination_races = derive_elimination_races(races)
 
-    ratings = Ratings()
+    ratings = Ratings(**PL_HYPERPARAMS)
     rows: list[dict] = []
     for _, race_row in races.iterrows():
         race_id = race_row["race_id_short"]
@@ -459,13 +490,32 @@ def build_features(
                 # pushed down like last place — Blaney (20% DNF, best running
                 # finish in field) rated +0.02 vs Logano +0.68. DNF risk is
                 # already modelled by the sampler's hazard layer.
-                keep = [i for i in keep if not is_dnf_arr[i]]
+                fins = [i for i in keep if not is_dnf_arr[i]]
+                if PL_DNF_MODE == "insert":
+                    # "Rank at exit": a DNF who ran >= PL_DNF_MIN_FRAC of the
+                    # race is slotted into the finishing order at his average
+                    # running position (loop data), so his speed still counts.
+                    key = {i: float(finishes[i]) for i in fins}
+                    for i in keep:
+                        if is_dnf_arr[i]:
+                            did = driver_ids[i]
+                            ps = (dnf_ps.get((race_id, int(did)))
+                                  if did is not None and pd.notna(did) else None)
+                            if ps is not None:
+                                key[i] = ps + 0.5          # after finishers at that spot
+                    keep = sorted(key, key=key.get)
+                else:
+                    keep = fins
             pl_drivers = [drivers[i] for i in keep]
             pl_teams = [teams[i] for i in keep]
             pl_is_dnf = [is_dnf_arr[i] for i in keep]
             first_dnf = next(
                 (idx for idx, v in enumerate(pl_is_dnf) if v), len(pl_drivers)
             )
+            if PL_EXCLUDE_DNF:
+                # Any DNFs left in `keep` were deliberately slotted in at their
+                # running position — rank the whole list, don't stop at them.
+                first_dnf = len(pl_drivers)
             race = RaceRanking(
                 drivers=pl_drivers, teams=pl_teams, track_type=tt, dnf_at=first_dnf,
             )
