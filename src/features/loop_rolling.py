@@ -6,6 +6,8 @@ only use loop rows from races strictly BEFORE R.
 """
 from __future__ import annotations
 
+from .emit_fix import race_drivers
+
 from collections import defaultdict, deque
 
 import numpy as np
@@ -47,10 +49,15 @@ def compute_loop_rolling(loopstats: pd.DataFrame, races: pd.DataFrame) -> pd.Dat
     )
 
     out_rows = []
-    for (race_id, _date), g in df.groupby(["race_id_short", "date"], sort=False):
+    # Iterate EVERY race (not just races that have loopstats) so upcoming
+    # races get pre-race snapshots for their whole entry list. See emit_fix.py.
+    by_race = {rid: g for rid, g in df.groupby("race_id_short", sort=False)}
+    empty = df.iloc[0:0]
+    for race_id in r.sort_values("date")["race_id_short"].tolist():
+        g = by_race.get(race_id, empty)
         # EMIT rolling snapshots BEFORE ingesting this race's loop rows.
-        for _, row in g.iterrows():
-            drv = int(row["driver_id"])
+        for drv in race_drivers(race_id, g):
+            drv = int(drv)
             h = hist[drv]
             snap = {"race_id_short": race_id, "driver_id": drv}
             for c in ROLL_COLS:

@@ -23,6 +23,8 @@ Caveats:
 """
 from __future__ import annotations
 
+from .emit_fix import race_drivers
+
 from collections import defaultdict, deque
 
 import numpy as np
@@ -33,6 +35,14 @@ PIT_RATIO_THRESHOLD = 1.4    # matches pit.py
 GREEN_MIN_RATIO = 0.90       # laps below this vs field median are anomalous (draft/tow)
 GREEN_MAX_RATIO = 1.06       # laps above this are cautions or heavy traffic
 MIN_STINT_LEN = 8            # green laps needed to fit a stint slope
+
+# Caution-lap fix (2026-10-09). Fixes a real bug (old median "falloff" was
+# -1.49 s/lap, i.e. caution speed-ups; fixed -0.013) but the backtest got
+# WORSE: first 23 races (tire change only) +2.3 bp, t=+2.2, 8/23 better.
+# The old, caution-driven numbers apparently carried something the GBM used
+# (restart/caution behaviour?) that true tire wear doesn't. Off.
+TIRE_ABS_GREEN = False
+GREEN_ABS_MAX = 1.10         # green lap = within 10% of race's 10th-pct lap time
 
 # Track types where the per-stint slope is signal, not noise. Diagnosed
 # empirically: rho(tire_decay, finish_pos) = -0.30 on short and -0.13 on
@@ -50,6 +60,11 @@ def per_race_tire_stats(laptimes_one_race: pd.DataFrame) -> pd.DataFrame:
                                      "pace_decay", "pace_retention"])
 
     lap_median = lt.groupby("lap")["lap_time"].median()
+    # Absolute green reference: under caution the whole field is slow
+    # together, so the per-lap-median ratio filter above lets caution laps
+    # through (77% of caution-lap rows passed in a 2025 sample). A green lap
+    # must also be within GREEN_ABS_MAX of the race's fast-lap reference.
+    race_ref = float(lt.loc[lt["lap_time"] > 0, "lap_time"].quantile(0.10)) if TIRE_ABS_GREEN else np.inf
 
     stats_rows = []
     for drv, sub in lt.groupby("driver_id"):
@@ -63,6 +78,12 @@ def per_race_tire_stats(laptimes_one_race: pd.DataFrame) -> pd.DataFrame:
 
         # Find stint boundaries at pit laps (ratio > pit threshold).
         pit_flags = ratio > PIT_RATIO_THRESHOLD
+        if TIRE_ABS_GREEN:
+            # Any non-green lap (caution OR pit) ends the run: tire wear is
+            # measured over consecutive green laps only. Pits under caution
+            # don't trip the ratio test (everyone is slow), so without this a
+            # "stint" could span a tire change.
+            pit_flags = pit_flags | ~(times <= GREEN_ABS_MAX * race_ref)
 
         # Iterate stints between pit laps.
         stint_slopes = []
@@ -131,7 +152,7 @@ def compute_rolling_tire(
     for race_id in race_order:
         tt = tt_by_race.get(race_id)
         lt_race = laptimes[laptimes["race_id_short"] == race_id]
-        drivers_this_race = lt_race["driver_id"].dropna().unique()
+        drivers_this_race = race_drivers(race_id, lt_race)
 
         # Emit rolling features BEFORE updating with this race.
         # Feature is only informative on short + intermediate; NaN elsewhere

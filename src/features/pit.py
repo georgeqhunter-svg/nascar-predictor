@@ -13,6 +13,8 @@ Aggregated per driver, walk-forward over the last 5/10 races.
 """
 from __future__ import annotations
 
+from .emit_fix import race_drivers
+
 from collections import defaultdict, deque
 
 import numpy as np
@@ -109,7 +111,7 @@ def compute_rolling_pit(laptimes: pd.DataFrame, races: pd.DataFrame) -> pd.DataF
     for race_id in race_order:
         lt_race = laptimes[laptimes["race_id_short"] == race_id]
 
-        drivers_this_race = lt_race["driver_id"].dropna().unique()
+        drivers_this_race = race_drivers(race_id, lt_race)
         for drv in drivers_this_race:
             drv = int(drv)
             g = hist_gain[drv]
@@ -189,7 +191,7 @@ def compute_rolling_pit_team(
     out_rows = []
     for race_id in race_order:
         lt_race = laptimes[laptimes["race_id_short"] == race_id]
-        drivers_this_race = lt_race["driver_id"].dropna().unique()
+        drivers_this_race = race_drivers(race_id, lt_race)
 
         # Emit BEFORE ingesting this race's stops.
         for drv in drivers_this_race:

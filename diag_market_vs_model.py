@@ -8,7 +8,8 @@ import numpy as np, pandas as pd, statsmodels.api as sm
 import backtest_oddslogic_v5 as bt
 from src.features.tracks import resolve_track_type
 
-d = pd.read_parquet("data/processed/backtest_matchups_fastbase_0195.parquet")
+import sys
+d = pd.read_parquet(sys.argv[1] if len(sys.argv) > 1 else "data/processed/backtest_matchups_hazk110_0074.parquet")
 def ip(o): return 100/(o+100) if o > 0 else -o/(-o+100)
 ma, mb = d.odds_a.map(ip), d.odds_b.map(ip); d["m"] = ma/(ma+mb)
 p = d.p_a_raw.clip(1e-4, 1-1e-4); y = d.outcome_a.astype(int)

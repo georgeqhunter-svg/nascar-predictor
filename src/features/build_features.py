@@ -46,6 +46,8 @@ from .dnf_neutral import DNF_NEUTRAL_FORM, neutralize_dnf_finishes
 from .track_profile import compute_track_profile
 from .missing import apply_missing_as_nan
 from .wear_index import compute_wear_index
+from .damage_rate import compute_driver_damage_rate
+from .emit_fix import set_entries
 
 # Plackett-Luce ratings learn only from drivers who finished (DNFs excluded,
 # not treated as last place). Queued test after the wear index.
@@ -108,6 +110,9 @@ def build_features(
     # hazard layer). Target, PL ratings and hazard inputs keep real finishes.
     # Must come AFTER the track_id merge (per-track form needs it).
     form_entries = neutralize_dnf_finishes(entries) if DNF_NEUTRAL_FORM else entries
+    # Rolling loop/restart/pit/tire builders emit snapshots for every entered
+    # driver, not only those in the race's own data (upcoming races). emit_fix.py
+    set_entries(entries)
     # Race-level distance (miles). Falls back to NaN when unavailable.
     race_distance = (
         races.set_index("race_id_short")["scheduled_distance"]
@@ -532,6 +537,10 @@ def build_features(
     prof = compute_track_profile(entries, races)
     out = out.merge(prof, on=["race_id_short", "driver"], how="left")
     assert len(out) == n_before, "track_profile merge duplicated rows"
+    # Per-driver damage rate at type (hazard layer only, not a GBM feature).
+    dmg = compute_driver_damage_rate(entries, races)
+    out = out.merge(dmg, on=["race_id_short", "driver"], how="left")
+    assert len(out) == n_before, "damage_rate merge duplicated rows"
     # Track surface wear index from long green-run lap-time falloff.
     wear = compute_wear_index(laptimes, races, entries)
     if not wear.empty:

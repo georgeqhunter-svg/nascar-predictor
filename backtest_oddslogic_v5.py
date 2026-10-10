@@ -1159,6 +1159,17 @@ DAMAGE_PENALTY = 3.0  # legacy fallback — replaced by DAMAGE_PENALTY_BY_TYPE
 # 17/27 races better. Excl. both Atlantas: -6.3 bp (t=-1.7), 15/25 better.
 HAZARD_SHRINK_K = 110.0
 
+# Per-driver damage hazard ("damaged but finished", >12 spots behind qual).
+# diag_sim_assumptions.py, 2022-2025 only: driver damage rate at a type
+# persists 0.27 raw, but raw rates mostly reflect qualifying up front (P1-5
+# 24.9% vs P21+ ~1%). Qual-adjusted residual persists 0.136 +/- 0.052.
+# K so 10 races at the type -> weight 0.136: K = 10*(1-0.136)/0.136 ~= 64.
+# Track-level damage did NOT persist (-0.35 +/- 0.24), so no track term.
+# Tested 2026-10-09, killed after 18/27 races: flat vs +0.0074 (+0.2 bp over
+# 711 matchups, per-race moves all < 1 bp except Sonoma +1.0). Off.
+DRIVER_DAMAGE_ENABLED = False
+DAMAGE_SHRINK_K = 64.0
+
 # CV refit speed knobs. T is a 1-parameter fit; the val races just need to
 # score honestly. Fewer boosters and a per-type val cap cost ~nothing on T
 # quality but cut wall-clock ~10x.
@@ -1262,6 +1273,13 @@ def per_driver_damage_hazards(
         tb = _track_col(target_df, "track_damage_base")
         if np.isfinite(tb):
             base = tb
+    if DRIVER_DAMAGE_ENABLED and "drv_dmg_resid_type_10" in getattr(target_df, "columns", []):
+        # base + shrunk qual-adjusted residual (driver's damage tendency beyond
+        # what his starting spot implies).
+        r = pd.to_numeric(target_df["drv_dmg_resid_type_10"], errors="coerce").fillna(0.0).to_numpy(float)
+        n = pd.to_numeric(target_df["drv_dmg_n_type_10"], errors="coerce").fillna(0).to_numpy(float)
+        h = base + (n / (n + DAMAGE_SHRINK_K)) * r
+        return np.clip(h, 0.5 * base, 3.0 * base)
     return np.full(len(target_df), float(base))
 
 

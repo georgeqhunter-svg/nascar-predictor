@@ -117,6 +117,19 @@ FEATURES: list[str] = [
 # type-bucketing would.
 CATEGORICAL: list[str] = ["driver", "team", "manufacturer"]
 
+# Driver-identity categorical. Lets the GBM learn a fixed per-driver offset
+# from ALL 2022+ history weighted equally = "reputation", slow to update.
+# diag_market_vs_model.py: model leans on history (track-type t=+5.2, track
+# t=+3.0) beyond the market even after pruning duplicate history features, and
+# at Sonoma it held Elliott +16 pts over the market despite P19 practice / P18
+# start. ablation_driver_cat.py tried this on the old 12-race model (result not
+# recorded). Re-tested 2026-10-09: Δ +0.0074 -> +0.0103 (paired +2.9 bp,
+# t=+1.7, only 8/27 better); history leans unchanged. Sonoma improved
+# (+0.103 -> +0.089) but everything else got worse. Kept the driver category.
+DRIVER_CATEGORICAL = True
+if not DRIVER_CATEGORICAL:
+    CATEGORICAL = [c for c in CATEGORICAL if c != "driver"]
+
 # Track-level passing difficulty within type (src/features/track_profile.py):
 # Spearman(start, finish) at THIS track, shrunk to the type mean. Kansas 0.42
 # vs Texas 0.27 vs Pocono 0.40 — start_stickiness_at_type can't see that.
@@ -136,6 +149,24 @@ WEAR_INDEX_FEATURE = False
 if WEAR_INDEX_FEATURE:
     FEATURES.append("track_wear_falloff")
 
+# Duplicate driver-history pruning. diag_market_vs_model.py (joint fit, on the
+# +0.0074 model): model leans beyond the market on track-type history (t=+3.7),
+# track history (t=+3.1) and start position (t=+2.7); outcomes reward none of
+# them. Each is fed in several near-duplicate finish-based versions. Keep one
+# representative of each, drop the copies.
+# Tested 2026-10-09: Δ +0.0074 -> +0.0091 (paired +1.7 bp, t=+0.8, 10/27
+# better) AND the leans barely moved (type 5.5->5.2, track 3.6->3.0, start
+# 3.2->2.5) -> duplicates aren't the cause. Off.
+HISTORY_PRUNE = False
+HISTORY_PRUNE_DROP = [
+    "avg_finish_at_type_ytd", "avg_finish_at_type_last_5", "drv_manuf_type_avg_finish_10",
+    "avg_finish_at_track", "best_finish_at_track", "avg_finish_at_track_last_5",
+    "best_finish_at_track_last_10",
+    "exp_finish_from_start",
+]
+if HISTORY_PRUNE:
+    FEATURES[:] = [f for f in FEATURES if f not in HISTORY_PRUNE_DROP]
+
 # LambdaRank gain per relevance grade (relevance 0..30, winner = 30).
 #   "default": LightGBM's 2^rel - 1 -> winner pair weighs ~1e9x a P15-vs-P20
 #              pair; model effectively learns only the front of the field.
@@ -144,6 +175,14 @@ if WEAR_INDEX_FEATURE:
 # "linear" tested 2026-10-02, killed after 8/25 races: +0.0051 worse on 340
 # matchups (AdventHealth +3 bps) — couldn't reach the -5 bp acceptance bar.
 LABEL_GAIN_MODE = "default"   # "default" | "linear"
+
+
+# GBM training target excludes DNF drivers (same idea as PL_EXCLUDE_DNF, which
+# took delta +0.0285 -> +0.0194, and HAZARD_SHRINK_K, +0.0195 -> +0.0074): a
+# driver who crashed out from the lead is a "last place" training example, so
+# the GBM partly learns who crashes, then the sampler applies DNF risk again.
+# Testing 2026-10-09 vs baseline +0.0069 (backtest_matchups_emit_0069).
+GBM_EXCLUDE_DNF = True
 
 
 def _label_gain_params() -> dict:
@@ -245,6 +284,11 @@ class GBMEnsemble:
         cat_l2: float = 20.0,
         min_data_per_group: int = 50,
     ) -> None:
+        if GBM_EXCLUDE_DNF and "is_dnf" in features.columns:
+            # Train on drivers who were running at the end only: the GBM is
+            # the speed model; crash/DNF risk lives in the race simulation.
+            # Finishers keep their order, so relevance is unchanged for them.
+            features = features[~features["is_dnf"].astype(bool)]
         x = _prepare_x(features, drop=self.drop_features)
         y = _relevance(features["finish_pos"])
         grouped = features.groupby("race_id_short", sort=False).size().tolist()

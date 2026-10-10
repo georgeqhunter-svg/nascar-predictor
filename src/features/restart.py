@@ -10,6 +10,8 @@ a per-race per-driver 'restart_delta' signal that we then roll walk-forward.
 """
 from __future__ import annotations
 
+from .emit_fix import race_drivers
+
 from collections import defaultdict, deque
 
 import numpy as np
@@ -133,7 +135,7 @@ def compute_rolling_restart(
     for race_id in race_order:
         lt_race = laptimes[laptimes["race_id_short"] == race_id]
         # Emit snapshot BEFORE ingesting this race.
-        drivers_this_race = lt_race["driver_id"].dropna().unique()
+        drivers_this_race = race_drivers(race_id, lt_race)
         for drv in drivers_this_race:
             drv = int(drv)
             g = hist_gain[drv]
