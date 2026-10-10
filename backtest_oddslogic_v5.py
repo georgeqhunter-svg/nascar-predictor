@@ -1180,6 +1180,24 @@ VAL_CAP_PER_TYPE = 30
 # reuse it in between (~97% of runtime). 1 = recalibrate every race (old,
 # ~10-11 h). 9 = 3 calibrations per 27-race run.
 CAL_REFRESH_EVERY = 9
+
+# Rainout no-qualifying model. On formula-grid races (no qualifying speeds;
+# superspeedways excluded) predict with a second GBM trained WITHOUT
+# qualifying-derived features, so it rates drivers on form/history/track like
+# the market must. Pre-set rule (2026-10-09): keep only if the 6 formula-grid
+# backtest races improve on net AND >= 4 of 6 improve. Run AFTER the surface test.
+# ADOPTED 2026-10-10 (passed pre-set rule): Δ +0.0054 -> +0.0028. The 6
+# rainouts: -11.9 bp avg (SE 15.5), 5/6 improved (Window World -50, Southern
+# 500 -37, Hollywood Casino -35, Coca-Cola 600 -16, Cracker Barrel -8);
+# Bristol +82 (third rainout idea where Bristol goes the other way).
+# Non-rainout races unchanged (0.0 bp). NOTE: predict_pipeline.py (live) does
+# not use this yet.
+RAINOUT_NOSTART_MODEL = True
+RAINOUT_DROP_QUAL = ["start_pos", "exp_finish_from_start", "start_stickiness_at_type",
+                     "qual_z", "team_teammate_qual_z", "qual_to_finish_delta_at_type_10"]
+RAINOUT_DROP_PRACTICE = ["practice_z", "practice_gap_z", "practice_laps_z", "team_teammate_practice_z",
+                         "practice_best_speed_z", "practice_5lap_avg_z", "practice_10lap_avg_z",
+                         "practice_consistency_z", "practice_laps_run_z"]
 _CAL_CACHE = None
 _CAL_AGE = 0
 
@@ -1334,6 +1352,22 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     model = GBMEnsemble()
     model.fit(train, n_estimators=15, **TIGHT_REG)
 
+    # Rainout (formula grid): predict with a GBM that never saw qualifying-
+    # derived features (and practice features if the race had no practice).
+    pred_model = model
+    if RAINOUT_NOSTART_MODEL:
+        from src.features.formula_grid import formula_grid_races
+        if target_rid in formula_grid_races(entries, races):
+            drop = list(RAINOUT_DROP_QUAL)
+            no_prac = (pd.to_numeric(target.get("practice_z"), errors="coerce").fillna(0).abs().sum() == 0
+                       and pd.to_numeric(target.get("has_practice_data"), errors="coerce").fillna(0).sum() == 0)
+            if no_prac:
+                drop += RAINOUT_DROP_PRACTICE
+            pred_model = GBMEnsemble(drop_features=drop)
+            pred_model.fit(train, n_estimators=15, **TIGHT_REG)
+            print(f"  [{name_match}] formula grid -> no-qualifying model "
+                  f"({len(drop)} features dropped{', no practice' if no_prac else ''})")
+
     # Calibration reuse (speed): the leave-one-race-out CV below is ~97% of
     # wall time and T barely moves race to race. Reuse the last calibration
     # for CAL_REFRESH_EVERY consecutive backtest races. Still honest: every
@@ -1342,7 +1376,7 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     if CAL_REFRESH_EVERY > 1 and _CAL_CACHE is not None and _CAL_AGE < CAL_REFRESH_EVERY:
         T_by_type, scales = _CAL_CACHE
         _CAL_AGE += 1
-        return _finish_race(name_match, matchups, target, model, tt, T_by_type, scales,
+        return _finish_race(name_match, matchups, target, pred_model, tt, T_by_type, scales,
                             entries, target_rid)
 
     race_order = train.groupby("race_id_short")["date"].first().sort_values().index.tolist()
@@ -1393,7 +1427,7 @@ def run_race(target_date, name_match, matchups, races, entries, sessions,
     )
     if CAL_REFRESH_EVERY > 1:
         _CAL_CACHE, _CAL_AGE = (T_by_type, scales), 1
-    return _finish_race(name_match, matchups, target, model, tt, T_by_type, scales,
+    return _finish_race(name_match, matchups, target, pred_model, tt, T_by_type, scales,
                         entries, target_rid)
 
 

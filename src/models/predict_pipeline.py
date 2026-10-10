@@ -168,7 +168,30 @@ def calibrate_and_sample(
     T = T_by_type.get(track_type, 1.0)
 
     # ---- Score target race ----
-    raw = model.predict_scores(target)
+    # Rainout (formula grid): same rule as backtest_oddslogic_v5.run_race —
+    # predict with a GBM trained without qualifying-derived features (and
+    # without practice features if there was no practice). Formula grid =
+    # no qualifying speeds for the field; superspeedways excluded.
+    pred_model = model
+    try:
+        from backtest_oddslogic_v5 import (RAINOUT_NOSTART_MODEL, RAINOUT_DROP_QUAL,
+                                           RAINOUT_DROP_PRACTICE)
+    except ImportError:
+        RAINOUT_NOSTART_MODEL = False
+    if RAINOUT_NOSTART_MODEL and track_type != "superspeedway":
+        qz = pd.to_numeric(target.get("qual_z"), errors="coerce").fillna(0).abs().sum()
+        if qz == 0:
+            drop = list(RAINOUT_DROP_QUAL)
+            no_prac = (pd.to_numeric(target.get("practice_z"), errors="coerce").fillna(0).abs().sum() == 0
+                       and pd.to_numeric(target.get("has_practice_data"), errors="coerce").fillna(0).sum() == 0)
+            if no_prac:
+                drop += RAINOUT_DROP_PRACTICE
+            pred_model = GBMEnsemble(drop_features=drop)
+            pred_model.fit(train, n_estimators=n_estimators, **tight_reg)
+            if verbose:
+                print(f"RAINOUT: formula grid detected -> no-qualifying model "
+                      f"({len(drop)} features dropped{', no practice' if no_prac else ''})")
+    raw = pred_model.predict_scores(target)
     blended = blend_scores(raw, target["pl_effective"].to_numpy(), alpha, scales)
     if verbose and scales:
         print(f"Target race blend std = {blended.std():.3f} (1.0 = median val race)")

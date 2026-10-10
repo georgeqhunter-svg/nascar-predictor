@@ -48,6 +48,8 @@ from .missing import apply_missing_as_nan
 from .wear_index import compute_wear_index
 from .damage_rate import compute_driver_damage_rate
 from .emit_fix import set_entries
+from .surface import compute_surface_history
+from .clean_air import compute_clean_air_pace
 
 # Plackett-Luce ratings learn only from drivers who finished (DNFs excluded,
 # not treated as last place). Queued test after the wear index.
@@ -537,6 +539,15 @@ def build_features(
     prof = compute_track_profile(entries, races)
     out = out.merge(prof, on=["race_id_short", "driver"], how="left")
     assert len(out) == n_before, "track_profile merge duplicated rows"
+    # Clean-air, tire-age-corrected race pace (rolling 5).
+    ca = compute_clean_air_pace(laptimes, entries, races)
+    if not ca.empty:
+        out = out.merge(ca, on=["race_id_short", "driver"], how="left")
+        assert len(out) == n_before, "clean_air merge duplicated rows"
+    # Driver history on the same surface class (old/mid/fresh asphalt, concrete).
+    surf = compute_surface_history(entries, races)
+    out = out.merge(surf, on=["race_id_short", "driver"], how="left")
+    assert len(out) == n_before, "surface merge duplicated rows"
     # Per-driver damage rate at type (hazard layer only, not a GBM feature).
     dmg = compute_driver_damage_rate(entries, races)
     out = out.merge(dmg, on=["race_id_short", "driver"], how="left")

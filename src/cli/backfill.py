@@ -37,7 +37,8 @@ PROCESSED = REPO_ROOT / "data" / "processed"
 _REQUEST_INTERVAL = 0.5
 
 
-def backfill(seasons: Iterable[int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def backfill(seasons: Iterable[int], out_dir: Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    out_dir = Path(out_dir) if out_dir is not None else PROCESSED
     race_rows = []
     entry_rows = []
     session_rows = []
@@ -112,14 +113,14 @@ def backfill(seasons: Iterable[int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     entries = pd.concat(entry_rows, ignore_index=True) if entry_rows else pd.DataFrame()
     sessions = pd.concat(session_rows, ignore_index=True) if session_rows else pd.DataFrame()
 
-    PROCESSED.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     # MERGE, don't overwrite. Previously `--seasons 2026` replaced the files with
     # 2026-only data and silently wiped 2022-2025 history (happened 2026-09-25).
     # Now: rows for races fetched in THIS run replace their old rows; every
     # other race already on disk is kept.
     def _merge(new: pd.DataFrame, fname: str) -> pd.DataFrame:
-        path = PROCESSED / fname
+        path = out_dir / fname
         if new.empty or "race_id_short" not in new.columns:
             return pd.read_parquet(path) if path.exists() else new
         if not path.exists():
@@ -134,9 +135,9 @@ def backfill(seasons: Iterable[int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     if "date" in races.columns:
         races = races.sort_values("date").reset_index(drop=True)
 
-    races.to_parquet(PROCESSED / "races.parquet", index=False)
-    entries.to_parquet(PROCESSED / "entries.parquet", index=False)
-    sessions.to_parquet(PROCESSED / "sessions.parquet", index=False)
+    races.to_parquet(out_dir / "races.parquet", index=False)
+    entries.to_parquet(out_dir / "entries.parquet", index=False)
+    sessions.to_parquet(out_dir / "sessions.parquet", index=False)
     log.info("Wrote %s races, %s entries, %s session rows (merged with existing)",
              len(races), len(entries), len(sessions))
     if "season" in races.columns:
@@ -148,8 +149,14 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser()
     p.add_argument("--seasons", nargs="+", type=int, required=True)
+    p.add_argument("--history", action="store_true",
+                   help="write to data/processed/history/ (pre-Next-Gen priors; NEVER the training set)")
     args = p.parse_args(argv)
-    backfill(args.seasons)
+    if args.history and any(y >= 2022 for y in args.seasons):
+        p.error("--history is for pre-2022 seasons only")
+    if not args.history and any(y < 2022 for y in args.seasons):
+        p.error("pre-2022 seasons must use --history so they stay out of the training data")
+    backfill(args.seasons, out_dir=(PROCESSED / "history") if args.history else None)
     return 0
 
 

@@ -22,9 +22,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED = REPO_ROOT / "data" / "processed"
 
 
-def backfill_loop(sleep: float = 0.3, refetch: bool = False) -> pd.DataFrame:
-    races = pd.read_parquet(PROCESSED / "races.parquet")
-    path = PROCESSED / "loopstats.parquet"
+def backfill_loop(sleep: float = 0.3, refetch: bool = False, base: Path = PROCESSED) -> pd.DataFrame:
+    races = pd.read_parquet(base / "races.parquet")
+    path = base / "loopstats.parquet"
     existing = pd.read_parquet(path) if path.exists() else pd.DataFrame()
     # INCREMENTAL by default: only races not already on disk. The old version
     # re-downloaded everything and OVERWROTE the file, so any race whose fetch
@@ -60,8 +60,8 @@ def backfill_loop(sleep: float = 0.3, refetch: bool = False) -> pd.DataFrame:
         out = new
     log.info("Fetched %s new races; merged total %s races", new["race_id_short"].nunique(),
              out["race_id_short"].nunique())
-    PROCESSED.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(PROCESSED / "loopstats.parquet", index=False)
+    base.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(base / "loopstats.parquet", index=False)
     log.info("Wrote %s loopstats rows across %s races", len(out), out["race_id_short"].nunique())
     return out
 
@@ -71,8 +71,10 @@ def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--sleep", type=float, default=0.3)
     p.add_argument("--refetch", action="store_true", help="re-download every race (merge, never drop)")
+    p.add_argument("--history", action="store_true", help="use data/processed/history/ (pre-2022)")
     args = p.parse_args(argv)
-    backfill_loop(args.sleep, refetch=args.refetch)
+    backfill_loop(args.sleep, refetch=args.refetch,
+                  base=(PROCESSED / "history") if args.history else PROCESSED)
     return 0
 
 

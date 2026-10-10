@@ -149,6 +149,22 @@ WEAR_INDEX_FEATURE = False
 if WEAR_INDEX_FEATURE:
     FEATURES.append("track_wear_falloff")
 
+# Driver history on the same surface class (src/features/surface.py).
+# Pre-registered check on 2022-2025: beyond form + type + track history t=+3.8.
+# ADOPTED 2026-10-09: Δ +0.0080 -> +0.0054; paired -2.6 bp (SE 1.2, t=-2.07),
+# 15/27 races better. Old-surface races -4.8 bp (t=-2.3, 5/8) as predicted;
+# concrete flat (+0.7, 1/4). Repave data: dailydownforce.com + user.
+SURFACE_CLASS_FEATURE = True
+if SURFACE_CLASS_FEATURE:
+    FEATURES.append("surface_class_hist_10")
+
+# Clean-air, tire-age-corrected race pace (src/features/clean_air.py).
+# Pre-check 2022-2025: beyond form/running pos/loop rating/green pace t=+2.00
+# (small). Testing 2026-10-10 vs +0.0028 (backtest_matchups_rainout_0028).
+CLEAN_AIR_FEATURE = True
+if CLEAN_AIR_FEATURE:
+    FEATURES.append("clean_air_pace_5")
+
 # Duplicate driver-history pruning. diag_market_vs_model.py (joint fit, on the
 # +0.0074 model): model leans beyond the market on track-type history (t=+3.7),
 # track history (t=+3.1) and start position (t=+2.7); outcomes reward none of
